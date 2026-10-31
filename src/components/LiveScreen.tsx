@@ -53,7 +53,7 @@ const FrameView: React.FC<{ frame: Frame; textScale: number }> = ({ frame, textS
     {frame.mode === "logo" && (
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
         <div className="mb-[2cqw] grid h-[12cqw] w-[12cqw] place-items-center rounded-full bg-[#3b82f6] text-[5cqw] font-bold text-white">✝</div>
-        <div className="text-[4cqw] font-bold tracking-wide text-white">GRACE CHURCH OF WORSHIP</div>
+        <div className="text-[4cqw] font-bold tracking-wide text-white">THE LIFE OF TRUTH CHURCH</div>
         <div className="text-[2.6cqw] text-zinc-300">Welcome to His Presence</div>
       </div>
     )}
