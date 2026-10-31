@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorshipTech-Pro — EasyWorship Assistant</title>
+    <meta name="description" content="AI assistant at practice simulator para sa EasyWorship 7/6/2009: hotkeys, step-by-step guides, songs at buong Bible (Ang Biblia 1905, KJV)." />
+    <meta name="theme-color" content="#111113" />
+    <!-- 2026-10-28 (Jarvis): apply the saved theme before first paint (no white flash in dark mode) -->
+    <script>
+      (function () {
+        var t = "dark";
+        try {
+          var s = localStorage.getItem("wtp-theme");
+          if (s === "light" || s === "dark") t = s;
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
+    <meta property="og:title" content="WorshipTech-Pro — EasyWorship Assistant" />
+    <meta property="og:description" content="AI assistant at practice simulator para sa church media volunteers na gumagamit ng EasyWorship." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

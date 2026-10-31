@@ -1,0 +1,6 @@
+{
+  "name": "WorshipTech-Pro",
+  "description": "AI assistant and interactive workflow companion for EasyWorship church presentation software.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
