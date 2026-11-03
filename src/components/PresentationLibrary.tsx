@@ -3,6 +3,7 @@
  *  - Import .pptx: text + speaker notes + background of each slide (no exact layout).
  *  - Import images: slides exported from PowerPoint as PNG/JPG — exact look, 1 picture = 1 slide.
  * Saved in this browser only (IndexedDB).
+ * 2026-11-03b: saved in PouchDB + optional CouchDB sync (presentationStore.ts / couchSync.ts).
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Upload, Images, AlertTriangle, Loader2, Presentation as PresentationIcon } from "lucide-react";
@@ -14,7 +15,9 @@ import {
   savePresentation,
   deletePresentation,
   newPresentationId,
+  watchPresentations,
 } from "../lib/presentationStore";
+import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
 interface PresentationLibraryProps {
   searchQuery: string;
@@ -43,6 +46,8 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
 
   useEffect(() => {
     refresh();
+    void autoStartCouchSync();
+    return watchPresentations(() => void refresh()); // e.g. decks pulled from CouchDB
   }, []);
 
   useEffect(() => {
@@ -135,6 +140,8 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
         <input ref={imagesRef} type="file" multiple accept={IMAGE_SLIDE_TYPES.join(",")} className="hidden" onChange={handleImages} data-testid="images-input" />
       </div>
 
+      <CouchSyncPanel />
+
       {busy && (
         <p role="status" className="text-xs text-accent-text bg-accent-soft border border-accent/30 rounded-md px-2 py-1.5 flex items-center gap-1.5">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -167,7 +174,7 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
           <p>
             <strong>Import images</strong> — sa PowerPoint: <em>File → Save As → PNG → All Slides</em>, tapos piliin lahat ng PNG. Eksakto ang itsura.
           </p>
-          <p className="text-fg-subtle">Dito lang sa browser na ito naka-save. Hindi suportado ang lumang .ppt.</p>
+          <p className="text-fg-subtle">Naka-save sa browser na ito (at sa CouchDB mo kapag naka-on ang sync). Hindi suportado ang lumang .ppt.</p>
         </div>
       )}
       {items.length > 0 && rows.length === 0 && <p className="text-xs text-fg-subtle p-2">Walang tugma sa "{searchQuery}".</p>}

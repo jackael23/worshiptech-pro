@@ -7,20 +7,15 @@
  *  - CouchDB login uses a session cookie (POST /_session). The password is never stored.
  * Doc shape: { _id: song.id, type: "song", ...StoredSong }.
  */
-import PouchDB from "pouchdb-browser";
 import { StoredSong, sanitizeSong, loadMySongs } from "./mySongsStore";
+import { getLocalDb, watchLocal } from "./couchSync";
 
-export const LOCAL_SONGS_DB = "wtp-songs";
 const MIGRATED_KEY = "wtp.mySongs.migratedToPouch.v1";
-const SETTINGS_KEY = "wtp-couchdb-v1";
 
 type SongDoc = StoredSong & { _id: string; _rev?: string; type: "song" };
 
-let db: PouchDB.Database<SongDoc> | null = null;
-function getDb(): PouchDB.Database<SongDoc> {
-  if (!db) db = new PouchDB<SongDoc>(LOCAL_SONGS_DB, { auto_compaction: true });
-  return db;
-}
+// 2026-11-03b: the PouchDB instance + CouchDB sync moved to couchSync.ts (shared with Bibles/PPT).
+const getDb = () => getLocalDb<SongDoc>("songs");
 
 /** Latest known _rev of every song, needed to update/delete. */
 const revs = new Map<string, string>();
@@ -152,172 +147,5 @@ export function saveSongsDiff(prev: StoredSong[], next: StoredSong[]): Promise<b
   });
 }
 
-/** Calls `onChange` (debounced) whenever the local DB changes from outside this tab's saves, e.g. sync. */
-export function watchSongs(onChange: () => void): () => void {
-  let t: ReturnType<typeof setTimeout> | undefined;
-  let feed: PouchDB.Core.Changes<SongDoc> | null = null;
-  try {
-    feed = getDb()
-      .changes({ since: "now", live: true })
-      .on("change", () => {
-        clearTimeout(t);
-        t = setTimeout(onChange, 300);
-      })
-      .on("error", () => undefined);
-  } catch {
-    /* ignore */
-  }
-  return () => {
-    clearTimeout(t);
-    feed?.cancel();
-  };
-}
-
-// ---------------------------------------------------------------- CouchDB sync
-
-export interface CouchSettings {
-  url: string; // e.g. http://localhost:5984 (no user/password in it)
-  dbName: string; // e.g. wtp_songs
-  username: string;
-  enabled: boolean;
-}
-
-export const DEFAULT_COUCH: CouchSettings = { url: "http://localhost:5984", dbName: "wtp_songs", username: "", enabled: false };
-
-export type SyncState = "off" | "connecting" | "active" | "synced" | "login" | "error";
-export interface SyncStatus {
-  state: SyncState;
-  message?: string;
-  lastSync?: string;
-}
-
-export function loadCouchSettings(): CouchSettings {
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_COUCH };
-    const o = JSON.parse(raw) as Partial<CouchSettings>;
-    return {
-      url: typeof o.url === "string" ? o.url : DEFAULT_COUCH.url,
-      dbName: typeof o.dbName === "string" ? o.dbName : DEFAULT_COUCH.dbName,
-      username: typeof o.username === "string" ? o.username.slice(0, 80) : "",
-      enabled: o.enabled === true,
-    };
-  } catch {
-    return { ...DEFAULT_COUCH };
-  }
-}
-
-export function saveCouchSettings(s: CouchSettings): void {
-  try {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Checks the settings. Returns an error message (Taglish) or null when OK. */
-export function validateCouchSettings(s: CouchSettings): string | null {
-  let u: URL;
-  try {
-    u = new URL(s.url);
-  } catch {
-    return "Mali ang CouchDB URL (hal. http://localhost:5984).";
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return "Dapat http:// o https:// ang CouchDB URL.";
-  if (u.username || u.password) return "Huwag ilagay ang username/password sa URL — gamitin ang Login.";
-  if (!/^[a-z][a-z0-9_$()+/-]{0,120}$/.test(s.dbName)) return "Mali ang pangalan ng database (maliliit na letra, numero, _ lang; hal. wtp_songs).";
-  return null;
-}
-
-const baseUrl = (s: CouchSettings) => s.url.replace(/\/+$/, "");
-const withCookies: typeof fetch = (input, init) => PouchDB.fetch(input as string, { ...init, credentials: "include" });
-
-/** Logs in to CouchDB (session cookie). The password is only sent, never saved. */
-export async function couchLogin(s: CouchSettings, password: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch(`${baseUrl(s)}/_session`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: s.username, password }),
-    });
-    if (res.ok) return { ok: true };
-    if (res.status === 401) return { ok: false, error: "Mali ang username o password." };
-    return { ok: false, error: `CouchDB: HTTP ${res.status}` };
-  } catch {
-    return { ok: false, error: "Hindi maabot ang CouchDB. Bukas ba ito, at naka-enable ang CORS (credentials) para sa address ng app?" };
-  }
-}
-
-/** Who is logged in (null = nobody / unreachable). */
-export async function couchSessionUser(s: CouchSettings): Promise<{ name: string | null; reachable: boolean }> {
-  try {
-    const res = await fetch(`${baseUrl(s)}/_session`, { credentials: "include" });
-    if (!res.ok) return { name: null, reachable: true };
-    const j = (await res.json()) as { userCtx?: { name?: string | null } };
-    return { name: j.userCtx?.name ?? null, reachable: true };
-  } catch {
-    return { name: null, reachable: false };
-  }
-}
-
-export async function couchLogout(s: CouchSettings): Promise<void> {
-  try {
-    await fetch(`${baseUrl(s)}/_session`, { method: "DELETE", credentials: "include" });
-  } catch {
-    /* ignore */
-  }
-}
-
-let syncHandler: PouchDB.Replication.Sync<SongDoc> | null = null;
-let syncStatus: SyncStatus = { state: "off" };
-const syncListeners = new Set<(st: SyncStatus) => void>();
-function onStatus(st: SyncStatus) {
-  syncStatus = st.state === "synced" || !syncStatus.lastSync ? st : { ...st, lastSync: syncStatus.lastSync };
-  syncListeners.forEach((fn) => fn(syncStatus));
-}
-
-/** Sync keeps running while the app is open (even when the Songs tab is closed). */
-export function subscribeSync(fn: (st: SyncStatus) => void): () => void {
-  syncListeners.add(fn);
-  fn(syncStatus);
-  return () => {
-    syncListeners.delete(fn);
-  };
-}
-export const isSyncRunning = () => syncHandler !== null;
-
-export function stopSync(): void {
-  syncHandler?.cancel();
-  syncHandler = null;
-  onStatus({ state: "off" });
-}
-
-/** Starts two-way live sync with the user's CouchDB. */
-export function startSync(s: CouchSettings): void {
-  syncHandler?.cancel();
-  syncHandler = null;
-  const err = validateCouchSettings(s);
-  if (err) {
-    onStatus({ state: "error", message: err });
-    return;
-  }
-  onStatus({ state: "connecting" });
-  const remote = new PouchDB<SongDoc>(`${baseUrl(s)}/${encodeURIComponent(s.dbName)}`, { fetch: withCookies });
-  const describe = (e: unknown): SyncStatus => {
-    const status = (e as { status?: number })?.status;
-    if (status === 401 || status === 403) return { state: "login", message: "Kailangang mag-login ulit sa CouchDB." };
-    const m = (e as { message?: string; reason?: string })?.reason || (e as { message?: string })?.message;
-    return { state: "error", message: m ? `Sync error: ${m}` : "Hindi maabot ang CouchDB — susubok ulit." };
-  };
-  const handler = getDb().sync(remote, { live: true, retry: true });
-  syncHandler = handler;
-  handler
-    .on("active", () => syncHandler === handler && onStatus({ state: "active" }))
-    .on("paused", (e) => {
-      if (syncHandler !== handler) return;
-      onStatus(e ? describe(e) : { state: "synced", lastSync: new Date().toISOString() });
-    })
-    .on("denied", (e) => syncHandler === handler && onStatus(describe(e)))
-    .on("error", (e) => syncHandler === handler && onStatus(describe(e)));
-}
+/** Calls `onChange` (debounced) whenever the local songs DB changes, e.g. pulled by sync. */
+export const watchSongs = (onChange: () => void) => watchLocal("songs", onChange);

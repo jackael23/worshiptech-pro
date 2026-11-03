@@ -1,5 +1,6 @@
 /**
  * 2026-11-03 (Jarvis): CouchDB sync settings for My Songs (shown in the Songs tab).
+ * 2026-11-03b: one login syncs Songs, Bibles and PPT (3 databases); also shown in the Bible/PPT tabs.
  * Login uses CouchDB's session cookie; the password is never stored by the app.
  */
 import React, { useEffect, useState } from "react";
@@ -17,7 +18,7 @@ import {
   stopSync,
   subscribeSync,
   isSyncRunning,
-} from "../lib/songsDb";
+} from "../lib/couchSync";
 
 const STATE_LABEL: Record<SyncStatus["state"], string> = {
   off: "CouchDB: off",
@@ -37,8 +38,13 @@ const STATE_DOT: Record<SyncStatus["state"], string> = {
   error: "bg-live",
 };
 
-/** Starts sync on app load when it was left on (called once by SongLibrary). */
-export async function autoStartCouchSync(): Promise<void> {
+/** Starts sync on app load when it was left on (called by the Songs/Bible/PPT tabs; runs once). */
+let autoStart: Promise<void> | null = null;
+export function autoStartCouchSync(): Promise<void> {
+  autoStart ??= doAutoStart();
+  return autoStart;
+}
+async function doAutoStart(): Promise<void> {
   const s = loadCouchSettings();
   if (!s.enabled || isSyncRunning() || validateCouchSettings(s)) return;
   const who = await couchSessionUser(s);
@@ -95,7 +101,7 @@ export const CouchSyncPanel: React.FC = () => {
     setSettings(next);
     saveCouchSettings(next);
     setUser(null);
-    setMsg("Naka-off ang sync. Naka-save pa rin ang mga kanta sa browser na ito.");
+    setMsg("Naka-off ang sync. Naka-save pa rin sa browser na ito ang mga kanta, Bible at PPT.");
   };
 
   const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : null;
@@ -120,22 +126,32 @@ export const CouchSyncPanel: React.FC = () => {
       {open && (
         <div className="mt-1.5 p-2.5 rounded-lg border border-line bg-surface-2 space-y-2" data-testid="couch-panel">
           <div className="flex items-center justify-between">
-            <strong className="text-fg">CouchDB sync (My Songs)</strong>
+            <strong className="text-fg">CouchDB sync (Songs, Bible, PPT)</strong>
             <button type="button" onClick={() => setOpen(false)} className="tap-target p-1 text-fg-subtle hover:text-fg" aria-label="Isara">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
           <p className="text-fg-subtle">
-            Laging naka-save muna ang kanta sa browser na ito; kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
+            Laging naka-save muna sa browser na ito ang kanta, Bible at PPT; kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
           </p>
           <label className="block">
             <span className="text-fg-muted">CouchDB URL</span>
             <input className={inputCls} value={settings.url} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, url: e.target.value.trim() })} placeholder="http://localhost:5984" />
           </label>
           <label className="block">
-            <span className="text-fg-muted">Database</span>
+            <span className="text-fg-muted">Database — Songs</span>
             <input className={inputCls} value={settings.dbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, dbName: e.target.value.trim() })} placeholder="wtp_songs" />
           </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="block">
+              <span className="text-fg-muted">Bible</span>
+              <input className={inputCls} value={settings.bibleDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, bibleDbName: e.target.value.trim() })} placeholder="wtp_bibles" />
+            </label>
+            <label className="block">
+              <span className="text-fg-muted">PPT</span>
+              <input className={inputCls} value={settings.pptDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, pptDbName: e.target.value.trim() })} placeholder="wtp_presentations" />
+            </label>
+          </div>
           {!settings.enabled || shownState === "login" ? (
             <>
               <label className="block">

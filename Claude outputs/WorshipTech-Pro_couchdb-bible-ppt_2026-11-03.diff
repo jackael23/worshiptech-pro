@@ -1,0 +1,1072 @@
+--- base1/src/components/BibleLibrary.tsx
++++ wtp/src/components/BibleLibrary.tsx
+@@ -4,13 +4,15 @@
+  *  - Full Bibles imported from a .wtp-bible.json file (KJV, Ang Dating Biblia 1905 — public
+  *    domain), saved in IndexedDB. Type a reference ("Juan 3:16", "Awit 23", "1 Cor 13:4-7")
+  *    or a word to search.
++ * 2026-11-03b: saved in PouchDB + optional CouchDB sync (bibleStore.ts / couchSync.ts).
+  */
+ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+ import { Plus, Upload, Settings2, Trash2, Info, AlertTriangle, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+ import { ScriptureVerse } from "../types";
+ import { SAMPLE_VERSES, BIBLE_VERSIONS, BIBLE_COPYRIGHT, scriptureSlideText } from "../data/easyworshipData";
+ import { BIBLE_BOOKS, parseReference } from "../lib/bibleBooks";
+-import { BibleMeta, WtpBible, BIBLE_LIMITS, listBibles, getBible, saveBible, deleteBible, validateBible, toMeta } from "../lib/bibleStore";
++import { BibleMeta, WtpBible, BIBLE_LIMITS, listBibles, getBible, saveBible, deleteBible, validateBible, toMeta, watchBibles } from "../lib/bibleStore";
++import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
+ 
+ export interface Passage {
+   title: string;
+@@ -61,11 +63,22 @@
+     browseTopRef.current?.scrollIntoView({ block: "nearest" });
+   };
+ 
++  // 2026-11-03b: bumped when Bibles change in the database (e.g. pulled from CouchDB) → reload.
++  const [dbRev, setDbRev] = useState(0);
+   useEffect(() => {
++    let alive = true;
+     listBibles().then(({ bibles, persistent: p }) => {
++      if (!alive) return;
+       setImported(bibles);
+       setPersistent(p);
+     });
++    return () => {
++      alive = false;
++    };
++  }, [dbRev]);
++  useEffect(() => {
++    void autoStartCouchSync();
++    return watchBibles(() => setDbRev((r) => r + 1));
+   }, []);
+ 
+   // Load the selected imported Bible.
+@@ -88,7 +101,7 @@
+     return () => {
+       alive = false;
+     };
+-  }, [selected]);
++  }, [selected, dbRev]);
+ 
+   useEffect(() => {
+     if (!notice) return;
+@@ -432,6 +445,8 @@
+         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImport} data-testid="bible-import-input" />
+       </div>
+ 
++      <CouchSyncPanel />
++
+       {busy && (
+         <p className="text-xs text-fg-muted flex items-center gap-1.5">
+           <Loader2 className="w-3.5 h-3.5 animate-spin" /> {busy}
+--- base1/src/components/CouchSyncPanel.tsx
++++ wtp/src/components/CouchSyncPanel.tsx
+@@ -1,5 +1,6 @@
+ /**
+  * 2026-11-03 (Jarvis): CouchDB sync settings for My Songs (shown in the Songs tab).
++ * 2026-11-03b: one login syncs Songs, Bibles and PPT (3 databases); also shown in the Bible/PPT tabs.
+  * Login uses CouchDB's session cookie; the password is never stored by the app.
+  */
+ import React, { useEffect, useState } from "react";
+@@ -17,7 +18,7 @@
+   stopSync,
+   subscribeSync,
+   isSyncRunning,
+-} from "../lib/songsDb";
++} from "../lib/couchSync";
+ 
+ const STATE_LABEL: Record<SyncStatus["state"], string> = {
+   off: "CouchDB: off",
+@@ -37,8 +38,13 @@
+   error: "bg-live",
+ };
+ 
+-/** Starts sync on app load when it was left on (called once by SongLibrary). */
+-export async function autoStartCouchSync(): Promise<void> {
++/** Starts sync on app load when it was left on (called by the Songs/Bible/PPT tabs; runs once). */
++let autoStart: Promise<void> | null = null;
++export function autoStartCouchSync(): Promise<void> {
++  autoStart ??= doAutoStart();
++  return autoStart;
++}
++async function doAutoStart(): Promise<void> {
+   const s = loadCouchSettings();
+   if (!s.enabled || isSyncRunning() || validateCouchSettings(s)) return;
+   const who = await couchSessionUser(s);
+@@ -95,7 +101,7 @@
+     setSettings(next);
+     saveCouchSettings(next);
+     setUser(null);
+-    setMsg("Naka-off ang sync. Naka-save pa rin ang mga kanta sa browser na ito.");
++    setMsg("Naka-off ang sync. Naka-save pa rin sa browser na ito ang mga kanta, Bible at PPT.");
+   };
+ 
+   const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : null;
+@@ -120,22 +126,32 @@
+       {open && (
+         <div className="mt-1.5 p-2.5 rounded-lg border border-line bg-surface-2 space-y-2" data-testid="couch-panel">
+           <div className="flex items-center justify-between">
+-            <strong className="text-fg">CouchDB sync (My Songs)</strong>
++            <strong className="text-fg">CouchDB sync (Songs, Bible, PPT)</strong>
+             <button type="button" onClick={() => setOpen(false)} className="tap-target p-1 text-fg-subtle hover:text-fg" aria-label="Isara">
+               <X className="w-3.5 h-3.5" />
+             </button>
+           </div>
+           <p className="text-fg-subtle">
+-            Laging naka-save muna ang kanta sa browser na ito; kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
++            Laging naka-save muna sa browser na ito ang kanta, Bible at PPT; kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
+           </p>
+           <label className="block">
+             <span className="text-fg-muted">CouchDB URL</span>
+             <input className={inputCls} value={settings.url} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, url: e.target.value.trim() })} placeholder="http://localhost:5984" />
+           </label>
+           <label className="block">
+-            <span className="text-fg-muted">Database</span>
++            <span className="text-fg-muted">Database — Songs</span>
+             <input className={inputCls} value={settings.dbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, dbName: e.target.value.trim() })} placeholder="wtp_songs" />
+           </label>
++          <div className="grid grid-cols-2 gap-1.5">
++            <label className="block">
++              <span className="text-fg-muted">Bible</span>
++              <input className={inputCls} value={settings.bibleDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, bibleDbName: e.target.value.trim() })} placeholder="wtp_bibles" />
++            </label>
++            <label className="block">
++              <span className="text-fg-muted">PPT</span>
++              <input className={inputCls} value={settings.pptDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, pptDbName: e.target.value.trim() })} placeholder="wtp_presentations" />
++            </label>
++          </div>
+           {!settings.enabled || shownState === "login" ? (
+             <>
+               <label className="block">
+--- base1/src/components/PresentationLibrary.tsx
++++ wtp/src/components/PresentationLibrary.tsx
+@@ -3,6 +3,7 @@
+  *  - Import .pptx: text + speaker notes + background of each slide (no exact layout).
+  *  - Import images: slides exported from PowerPoint as PNG/JPG — exact look, 1 picture = 1 slide.
+  * Saved in this browser only (IndexedDB).
++ * 2026-11-03b: saved in PouchDB + optional CouchDB sync (presentationStore.ts / couchSync.ts).
+  */
+ import React, { useEffect, useRef, useState } from "react";
+ import { Plus, Trash2, Upload, Images, AlertTriangle, Loader2, Presentation as PresentationIcon } from "lucide-react";
+@@ -14,7 +15,9 @@
+   savePresentation,
+   deletePresentation,
+   newPresentationId,
++  watchPresentations,
+ } from "../lib/presentationStore";
++import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
+ 
+ interface PresentationLibraryProps {
+   searchQuery: string;
+@@ -43,6 +46,8 @@
+ 
+   useEffect(() => {
+     refresh();
++    void autoStartCouchSync();
++    return watchPresentations(() => void refresh()); // e.g. decks pulled from CouchDB
+   }, []);
+ 
+   useEffect(() => {
+@@ -135,6 +140,8 @@
+         <input ref={imagesRef} type="file" multiple accept={IMAGE_SLIDE_TYPES.join(",")} className="hidden" onChange={handleImages} data-testid="images-input" />
+       </div>
+ 
++      <CouchSyncPanel />
++
+       {busy && (
+         <p role="status" className="text-xs text-accent-text bg-accent-soft border border-accent/30 rounded-md px-2 py-1.5 flex items-center gap-1.5">
+           <Loader2 className="w-3.5 h-3.5 animate-spin" />
+@@ -167,7 +174,7 @@
+           <p>
+             <strong>Import images</strong> — sa PowerPoint: <em>File → Save As → PNG → All Slides</em>, tapos piliin lahat ng PNG. Eksakto ang itsura.
+           </p>
+-          <p className="text-fg-subtle">Dito lang sa browser na ito naka-save. Hindi suportado ang lumang .ppt.</p>
++          <p className="text-fg-subtle">Naka-save sa browser na ito (at sa CouchDB mo kapag naka-on ang sync). Hindi suportado ang lumang .ppt.</p>
+         </div>
+       )}
+       {items.length > 0 && rows.length === 0 && <p className="text-xs text-fg-subtle p-2">Walang tugma sa "{searchQuery}".</p>}
+--- base1/src/lib/bibleStore.ts
++++ wtp/src/lib/bibleStore.ts
+@@ -2,7 +2,9 @@
+  * 2026-10-20 (Jarvis): full Bibles imported by the user from a WorshipTech-Pro Bible JSON
+  * (e.g. KJV, Ang Dating Biblia 1905 — public domain). Stored in IndexedDB (a full Bible is
+  * ~4–5 MB, too big for localStorage). Never sent to the server.
++ * 2026-11-03b: storage = PouchDB + optional sync to the user's own CouchDB (see couchSync.ts).
+  */
++import { getLocalDb, upsertDoc, removeDoc, watchLocal } from "./couchSync";
+ export interface WtpBibleBook {
+   name: string; // English
+   tl?: string; // Tagalog
+@@ -35,45 +37,80 @@
+ 
+ export const BIBLE_LIMITS = { MAX_FILE_BYTES: 20 * 1024 * 1024, MAX_VERSES: 40000, MAX_VERSE_CHARS: 3000, MAX_BIBLES: 10 };
+ 
+-const DB_NAME = "wtp-bibles";
+-const DB_VERSION = 1;
+-const memory = new Map<string, WtpBible>(); // cache + fallback when IndexedDB is unavailable
++// 2026-11-03b: Bibles live in PouchDB ("wtp-bibles-pdb", synced to CouchDB "wtp_bibles" when the
++// user logs in). Doc = meta fields + the whole Bible as attachment "bible.json" (~4–5 MB).
++// The old IndexedDB "wtp-bibles" (10-20) is read once to migrate, then left as a backup.
++const LEGACY_DB = "wtp-bibles";
++const MIGRATED_KEY = "wtp.bibles.migratedToPouch.v1";
++const ATTACHMENT = "bible.json";
++const memory = new Map<string, WtpBible>(); // cache + fallback when the database is unavailable
+ const memoryMeta = new Map<string, BibleMeta>();
+ 
+-function openDb(): Promise<IDBDatabase> {
+-  return new Promise((resolve, reject) => {
+-    if (typeof indexedDB === "undefined") return reject(new Error("IndexedDB unavailable"));
+-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+-    req.onupgradeneeded = () => {
++type BibleDoc = BibleMeta & { _id: string; type: "bible" };
++
++/** Reads every Bible from the old IndexedDB store (empty when it never existed). */
++function readLegacyBibles(): Promise<WtpBible[]> {
++  return new Promise((resolve) => {
++    if (typeof indexedDB === "undefined") return resolve([]);
++    const req = indexedDB.open(LEGACY_DB);
++    req.onupgradeneeded = () => req.transaction?.abort(); // didn't exist: don't create it
++    req.onerror = () => resolve([]);
++    req.onsuccess = () => {
+       const db = req.result;
+-      if (!db.objectStoreNames.contains("bibles")) db.createObjectStore("bibles", { keyPath: "id" });
+-      if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "id" });
++      if (!db.objectStoreNames.contains("bibles")) {
++        db.close();
++        return resolve([]);
++      }
++      const all = db.transaction("bibles", "readonly").objectStore("bibles").getAll();
++      all.onsuccess = () => {
++        db.close();
++        resolve((all.result as WtpBible[]) || []);
++      };
++      all.onerror = () => {
++        db.close();
++        resolve([]);
++      };
+     };
+-    req.onsuccess = () => resolve(req.result);
+-    req.onerror = () => reject(req.error);
+   });
+ }
+ 
+-function tx<T>(store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
+-  return openDb().then(
+-    (db) =>
+-      new Promise<T | undefined>((resolve, reject) => {
+-        const t = db.transaction(store, mode);
+-        const req = run(t.objectStore(store));
+-        t.oncomplete = () => {
+-          db.close();
+-          resolve(req ? (req.result as T) : undefined);
+-        };
+-        t.onerror = () => {
+-          db.close();
+-          reject(t.error);
+-        };
+-        t.onabort = () => {
+-          db.close();
+-          reject(t.error);
+-        };
+-      }),
+-  );
++async function putBible(b: WtpBible, importedAt = new Date().toISOString()): Promise<void> {
++  const meta = { ...toMeta(b), importedAt };
++  const doc = {
++    ...meta,
++    _id: b.id,
++    type: "bible" as const,
++    _attachments: { [ATTACHMENT]: { content_type: "application/json", data: new Blob([JSON.stringify(b)], { type: "application/json" }) } },
++  };
++  await upsertDoc("bibles", doc);
++}
++
++let migration: Promise<void> | null = null;
++function migrateOnce(): Promise<void> {
++  migration ??= (async () => {
++    try {
++      if (window.localStorage.getItem(MIGRATED_KEY)) return;
++    } catch {
++      return;
++    }
++    const old = await readLegacyBibles();
++    if (old.length > 0) {
++      const have = await getLocalDb("bibles").allDocs({ keys: old.map((b) => b.id) });
++      for (let i = 0; i < old.length; i++) {
++        const row = have.rows[i] as { error?: string; value?: { deleted?: boolean } };
++        if (row.error === "not_found" || row.value?.deleted) {
++          const { bible } = validateBible(old[i]);
++          if (bible) await putBible(bible);
++        }
++      }
++    }
++    try {
++      window.localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
++    } catch {
++      /* ignore */
++    }
++  })();
++  return migration;
+ }
+ 
+ export function toMeta(b: WtpBible): BibleMeta {
+@@ -91,8 +128,23 @@
+ /** Lists imported Bibles. `persistent` is false when only the in-memory fallback works. */
+ export async function listBibles(): Promise<{ bibles: BibleMeta[]; persistent: boolean }> {
+   try {
+-    const rows = (await tx<BibleMeta[]>("meta", "readonly", (s) => s.getAll())) || [];
+-    return { bibles: rows.sort((a, b) => a.shortName.localeCompare(b.shortName)), persistent: true };
++    await migrateOnce();
++    const res = await getLocalDb<BibleDoc>("bibles").allDocs({ include_docs: true });
++    const bibles: BibleMeta[] = [];
++    for (const row of res.rows) {
++      const d = row.doc;
++      if (!d || row.id.startsWith("_design/") || d.type !== "bible") continue;
++      bibles.push({
++        id: d._id,
++        name: String(d.name || d._id),
++        shortName: String(d.shortName || d._id),
++        language: String(d.language || "en"),
++        license: String(d.license || ""),
++        verseCount: Number(d.verseCount) || 0,
++        importedAt: String(d.importedAt || ""),
++      });
++    }
++    return { bibles: bibles.sort((a, b) => a.shortName.localeCompare(b.shortName)), persistent: true };
+   } catch {
+     return { bibles: [...memoryMeta.values()], persistent: false };
+   }
+@@ -102,9 +154,11 @@
+   const cached = memory.get(id);
+   if (cached) return cached;
+   try {
+-    const b = await tx<WtpBible>("bibles", "readonly", (s) => s.get(id));
+-    if (b) memory.set(id, b);
+-    return b || null;
++    const blob = (await getLocalDb("bibles").getAttachment(id, ATTACHMENT)) as Blob;
++    // Synced from CouchDB = outside data: validate again before use.
++    const { bible } = validateBible(JSON.parse(await blob.text()));
++    if (bible) memory.set(id, bible);
++    return bible || null;
+   } catch {
+     return null;
+   }
+@@ -113,11 +167,9 @@
+ /** Saves a validated Bible. Returns false when it could only be kept in memory (lost on reload). */
+ export async function saveBible(b: WtpBible): Promise<boolean> {
+   memory.set(b.id, b);
+-  const meta = toMeta(b);
+-  memoryMeta.set(b.id, meta);
++  memoryMeta.set(b.id, toMeta(b));
+   try {
+-    await tx("bibles", "readwrite", (s) => s.put(b));
+-    await tx("meta", "readwrite", (s) => s.put(meta));
++    await putBible(b);
+     return true;
+   } catch {
+     return false;
+@@ -128,13 +180,20 @@
+   memory.delete(id);
+   memoryMeta.delete(id);
+   try {
+-    await tx("bibles", "readwrite", (s) => s.delete(id));
+-    await tx("meta", "readwrite", (s) => s.delete(id));
++    await removeDoc("bibles", id);
+   } catch {
+     /* in-memory only */
+   }
+ }
+ 
++/** Calls `onChange` when Bibles change (e.g. pulled from CouchDB); clears the cache first. */
++export function watchBibles(onChange: () => void): () => void {
++  return watchLocal("bibles", () => {
++    memory.clear();
++    onChange();
++  });
++}
++
+ const isStr = (v: unknown, max: number) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
+ 
+ /** Checks a parsed JSON file and returns a clean Bible, or an error message (Taglish). */
+--- base1/src/lib/couchSync.ts
++++ wtp/src/lib/couchSync.ts
+@@ -0,0 +1,269 @@
++/**
++ * 2026-11-03b (Jarvis): shared PouchDB databases (this browser) + live sync to the user's own
++ * CouchDB, for My Songs, Bibles and Presentations (PPT).
++ *  - Local DBs: "wtp-songs" (since 11-03), "wtp-bibles-pdb", "wtp-presentations-pdb".
++ *  - Remote DBs (defaults): wtp_songs, wtp_bibles, wtp_presentations — one login for all three.
++ *  - CouchDB login uses a session cookie (POST /_session). The password is never stored.
++ *  - Big things (a whole Bible, picture slides) are saved as attachments, so the JSON body of
++ *    each doc stays small (CouchDB's max_document_size does not count attachments).
++ */
++import PouchDB from "pouchdb-browser";
++
++export type DbKind = "songs" | "bibles" | "presentations";
++export const DB_KINDS: DbKind[] = ["songs", "bibles", "presentations"];
++
++const LOCAL_NAMES: Record<DbKind, string> = {
++  songs: "wtp-songs",
++  bibles: "wtp-bibles-pdb",
++  presentations: "wtp-presentations-pdb",
++};
++/** Docs per replication batch: small for Bibles/PPT (each can be several MB). */
++const BATCH: Record<DbKind, number> = { songs: 100, bibles: 1, presentations: 2 };
++const SETTINGS_KEY = "wtp-couchdb-v1";
++
++const dbs = new Map<DbKind, PouchDB.Database<any>>();
++export function getLocalDb<T extends {} = {}>(kind: DbKind): PouchDB.Database<T> {
++  let db = dbs.get(kind);
++  if (!db) {
++    db = new PouchDB(LOCAL_NAMES[kind], { auto_compaction: true });
++    dbs.set(kind, db);
++  }
++  return db as PouchDB.Database<T>;
++}
++
++/** Calls `onChange` (debounced) whenever that local DB changes (own saves or pulled by sync). */
++export function watchLocal(kind: DbKind, onChange: () => void): () => void {
++  let t: ReturnType<typeof setTimeout> | undefined;
++  let feed: PouchDB.Core.Changes<{}> | null = null;
++  try {
++    feed = getLocalDb(kind)
++      .changes({ since: "now", live: true })
++      .on("change", () => {
++        clearTimeout(t);
++        t = setTimeout(onChange, 300);
++      })
++      .on("error", () => undefined);
++  } catch {
++    /* ignore */
++  }
++  return () => {
++    clearTimeout(t);
++    feed?.cancel();
++  };
++}
++
++/** Saves `doc` over whatever revision is there now (or creates it). */
++export async function upsertDoc<T extends {}>(kind: DbKind, doc: T & { _id: string }): Promise<void> {
++  const db = getLocalDb<T>(kind);
++  let rev: string | undefined;
++  try {
++    rev = (await db.get(doc._id))._rev;
++  } catch (e) {
++    if ((e as { status?: number }).status !== 404) throw e;
++  }
++  await db.put(rev ? { ...doc, _rev: rev } : doc);
++}
++
++export async function removeDoc(kind: DbKind, id: string): Promise<void> {
++  const db = getLocalDb(kind);
++  try {
++    const d = await db.get(id);
++    await db.remove(d);
++  } catch (e) {
++    if ((e as { status?: number }).status !== 404) throw e;
++  }
++}
++
++// ---------------------------------------------------------------- settings + login
++
++export interface CouchSettings {
++  url: string; // e.g. http://localhost:5984 (no user/password in it)
++  dbName: string; // songs, e.g. wtp_songs
++  bibleDbName: string; // e.g. wtp_bibles
++  pptDbName: string; // e.g. wtp_presentations
++  username: string;
++  enabled: boolean;
++}
++
++export const DEFAULT_COUCH: CouchSettings = {
++  url: "http://localhost:5984",
++  dbName: "wtp_songs",
++  bibleDbName: "wtp_bibles",
++  pptDbName: "wtp_presentations",
++  username: "",
++  enabled: false,
++};
++
++export const remoteName = (s: CouchSettings, kind: DbKind) => (kind === "songs" ? s.dbName : kind === "bibles" ? s.bibleDbName : s.pptDbName);
++
++export type SyncState = "off" | "connecting" | "active" | "synced" | "login" | "error";
++export interface SyncStatus {
++  state: SyncState;
++  message?: string;
++  lastSync?: string;
++}
++
++export function loadCouchSettings(): CouchSettings {
++  try {
++    const raw = window.localStorage.getItem(SETTINGS_KEY);
++    if (!raw) return { ...DEFAULT_COUCH };
++    const o = JSON.parse(raw) as Partial<CouchSettings>;
++    const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);
++    return {
++      url: str(o.url, DEFAULT_COUCH.url),
++      dbName: str(o.dbName, DEFAULT_COUCH.dbName),
++      bibleDbName: str(o.bibleDbName, DEFAULT_COUCH.bibleDbName), // older settings (11-03) had songs only
++      pptDbName: str(o.pptDbName, DEFAULT_COUCH.pptDbName),
++      username: str(o.username, "").slice(0, 80),
++      enabled: o.enabled === true,
++    };
++  } catch {
++    return { ...DEFAULT_COUCH };
++  }
++}
++
++export function saveCouchSettings(s: CouchSettings): void {
++  try {
++    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
++  } catch {
++    /* ignore */
++  }
++}
++
++const DB_NAME_RE = /^[a-z][a-z0-9_$()+/-]{0,120}$/;
++
++/** Checks the settings. Returns an error message (Taglish) or null when OK. */
++export function validateCouchSettings(s: CouchSettings): string | null {
++  let u: URL;
++  try {
++    u = new URL(s.url);
++  } catch {
++    return "Mali ang CouchDB URL (hal. http://localhost:5984).";
++  }
++  if (u.protocol !== "http:" && u.protocol !== "https:") return "Dapat http:// o https:// ang CouchDB URL.";
++  if (u.username || u.password) return "Huwag ilagay ang username/password sa URL — gamitin ang Login.";
++  const names = DB_KINDS.map((k) => remoteName(s, k));
++  if (!names.every((n) => DB_NAME_RE.test(n))) return "Mali ang pangalan ng database (maliliit na letra, numero, _ lang; hal. wtp_songs).";
++  if (new Set(names).size !== names.length) return "Magkakaiba dapat ang pangalan ng database ng Songs, Bible at PPT.";
++  return null;
++}
++
++const baseUrl = (s: CouchSettings) => s.url.replace(/\/+$/, "");
++const withCookies: typeof fetch = (input, init) => PouchDB.fetch(input as string, { ...init, credentials: "include" });
++
++/** Logs in to CouchDB (session cookie). The password is only sent, never saved. */
++export async function couchLogin(s: CouchSettings, password: string): Promise<{ ok: boolean; error?: string }> {
++  try {
++    const res = await fetch(`${baseUrl(s)}/_session`, {
++      method: "POST",
++      credentials: "include",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ name: s.username, password }),
++    });
++    if (res.ok) return { ok: true };
++    if (res.status === 401) return { ok: false, error: "Mali ang username o password." };
++    return { ok: false, error: `CouchDB: HTTP ${res.status}` };
++  } catch {
++    return { ok: false, error: "Hindi maabot ang CouchDB. Bukas ba ito, at naka-enable ang CORS (credentials) para sa address ng app?" };
++  }
++}
++
++/** Who is logged in (null = nobody / unreachable). */
++export async function couchSessionUser(s: CouchSettings): Promise<{ name: string | null; reachable: boolean }> {
++  try {
++    const res = await fetch(`${baseUrl(s)}/_session`, { credentials: "include" });
++    if (!res.ok) return { name: null, reachable: true };
++    const j = (await res.json()) as { userCtx?: { name?: string | null } };
++    return { name: j.userCtx?.name ?? null, reachable: true };
++  } catch {
++    return { name: null, reachable: false };
++  }
++}
++
++export async function couchLogout(s: CouchSettings): Promise<void> {
++  try {
++    await fetch(`${baseUrl(s)}/_session`, { method: "DELETE", credentials: "include" });
++  } catch {
++    /* ignore */
++  }
++}
++
++// ---------------------------------------------------------------- live sync (3 DBs)
++
++const KIND_LABEL: Record<DbKind, string> = { songs: "Songs", bibles: "Bible", presentations: "PPT" };
++const handlers = new Map<DbKind, PouchDB.Replication.Sync<{}>>();
++const perKind = new Map<DbKind, SyncStatus>();
++let syncStatus: SyncStatus = { state: "off" };
++const syncListeners = new Set<(st: SyncStatus) => void>();
++
++/** One status for all three: error > login > connecting > active > synced. */
++function publish() {
++  const list = DB_KINDS.map((k) => ({ k, st: perKind.get(k) })).filter((x): x is { k: DbKind; st: SyncStatus } => !!x.st);
++  let next: SyncStatus;
++  if (list.length === 0) next = { state: "off" };
++  else {
++    const pick = (state: SyncState) => list.find((x) => x.st.state === state);
++    const bad = pick("error") || pick("login");
++    if (bad) next = { state: bad.st.state, message: `${KIND_LABEL[bad.k]}: ${bad.st.message || ""}`.trim() };
++    else if (pick("connecting")) next = { state: "connecting" };
++    else if (pick("active")) next = { state: "active" };
++    else next = { state: "synced", lastSync: new Date().toISOString() };
++  }
++  syncStatus = next.state === "synced" || !syncStatus.lastSync ? next : { ...next, lastSync: syncStatus.lastSync };
++  syncListeners.forEach((fn) => fn(syncStatus));
++}
++
++/** Sync keeps running while the app is open (even when the Songs/Bible/PPT tab is closed). */
++export function subscribeSync(fn: (st: SyncStatus) => void): () => void {
++  syncListeners.add(fn);
++  fn(syncStatus);
++  return () => {
++    syncListeners.delete(fn);
++  };
++}
++export const isSyncRunning = () => handlers.size > 0;
++
++export function stopSync(): void {
++  handlers.forEach((h) => h.cancel());
++  handlers.clear();
++  perKind.clear();
++  publish();
++}
++
++/** Starts two-way live sync of Songs, Bibles and PPT with the user's CouchDB. */
++export function startSync(s: CouchSettings): void {
++  handlers.forEach((h) => h.cancel());
++  handlers.clear();
++  perKind.clear();
++  const err = validateCouchSettings(s);
++  if (err) {
++    perKind.set("songs", { state: "error", message: err });
++    publish();
++    return;
++  }
++  const describe = (e: unknown): SyncStatus => {
++    const status = (e as { status?: number })?.status;
++    if (status === 401 || status === 403) return { state: "login", message: "Kailangang mag-login ulit sa CouchDB." };
++    if (status === 413) return { state: "error", message: "Masyadong malaki para sa CouchDB (taasan ang max_http_request_size)." };
++    const m = (e as { reason?: string })?.reason || (e as { message?: string })?.message;
++    return { state: "error", message: m ? `Sync error: ${m}` : "Hindi maabot ang CouchDB — susubok ulit." };
++  };
++  for (const kind of DB_KINDS) {
++    perKind.set(kind, { state: "connecting" });
++    const remote = new PouchDB(`${baseUrl(s)}/${encodeURIComponent(remoteName(s, kind))}`, { fetch: withCookies });
++    const handler = getLocalDb(kind).sync(remote, { live: true, retry: true, batch_size: BATCH[kind], batches_limit: 2 });
++    handlers.set(kind, handler);
++    const mine = () => handlers.get(kind) === handler;
++    const set = (st: SyncStatus) => {
++      if (!mine()) return;
++      perKind.set(kind, st);
++      publish();
++    };
++    handler
++      .on("active", () => set({ state: "active" }))
++      .on("paused", (e) => set(e ? describe(e) : { state: "synced" }))
++      .on("denied", (e) => set(describe(e)))
++      .on("error", (e) => set(describe(e)));
++  }
++  publish();
++}
+--- base1/src/lib/presentationStore.ts
++++ wtp/src/lib/presentationStore.ts
+@@ -2,8 +2,10 @@
+  * 2026-10-28 (Jarvis): PowerPoint decks imported by the user (Presentations tab).
+  * Stored in IndexedDB like the Bibles — picture slides can be many MB, too big for localStorage.
+  * Never sent to the server.
++ * 2026-11-03b: storage = PouchDB + optional sync to the user's own CouchDB (see couchSync.ts).
+  */
+ import type { SlideContent } from "../types";
++import { getLocalDb, upsertDoc, removeDoc, watchLocal } from "./couchSync";
+ 
+ export interface StoredPresentation {
+   id: string;
+@@ -15,58 +17,149 @@
+ 
+ export const PRESENTATION_LIMITS = { MAX_PRESENTATIONS: 40 };
+ 
+-const DB_NAME = "wtp-presentations";
+-const DB_VERSION = 1;
+-const STORE = "presentations";
+-const memory = new Map<string, StoredPresentation>(); // fallback when IndexedDB is unavailable (private mode)
+-
+-function openDb(): Promise<IDBDatabase> {
+-  return new Promise((resolve, reject) => {
+-    if (typeof indexedDB === "undefined") return reject(new Error("IndexedDB unavailable"));
+-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+-    req.onupgradeneeded = () => {
+-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: "id" });
++// 2026-11-03b: decks live in PouchDB ("wtp-presentations-pdb", synced to CouchDB "wtp_presentations"
++// when the user logs in). Doc = name/kind/createdAt + all slides as attachment "slides.json"
++// (picture slides can be many MB). The old IndexedDB "wtp-presentations" is read once to migrate.
++const LEGACY_DB = "wtp-presentations";
++const LEGACY_STORE = "presentations";
++const MIGRATED_KEY = "wtp.presentations.migratedToPouch.v1";
++const ATTACHMENT = "slides.json";
++const memory = new Map<string, StoredPresentation>(); // fallback when the database is unavailable (private mode)
++
++export const newPresentationId = () => `ppt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
++
++const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
++
++/** Cleans slides read from storage / CouchDB. */
++function cleanSlides(v: unknown): SlideContent[] {
++  if (!Array.isArray(v)) return [];
++  const out: SlideContent[] = [];
++  for (const raw of v.slice(0, 500)) {
++    if (!raw || typeof raw !== "object") continue;
++    const o = raw as Record<string, unknown>;
++    const image = str(o.image, 40_000_000);
++    out.push({
++      label: str(o.label, 200) ?? "",
++      text: str(o.text, 20_000) ?? "",
++      image: image && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image) ? image : undefined,
++      background: str(o.background, 40_000_000),
++      textColor: str(o.textColor, 40),
++      notes: str(o.notes, 20_000),
++    });
++  }
++  return out;
++}
++
++function cleanPresentation(o: Record<string, unknown>, slides: unknown): StoredPresentation | null {
++  const id = str(o._id ?? o.id, 80);
++  if (!id || !/^ppt-[\w-]{1,70}$/.test(id)) return null;
++  const s = cleanSlides(slides);
++  if (s.length === 0) return null;
++  return {
++    id,
++    name: str(o.name, 200) || "Presentation",
++    kind: o.kind === "images" ? "images" : "pptx",
++    slides: s,
++    createdAt: str(o.createdAt, 40) || new Date(0).toISOString(),
++  };
++}
++
++function readLegacy(): Promise<StoredPresentation[]> {
++  return new Promise((resolve) => {
++    if (typeof indexedDB === "undefined") return resolve([]);
++    const req = indexedDB.open(LEGACY_DB);
++    req.onupgradeneeded = () => req.transaction?.abort(); // didn't exist: don't create it
++    req.onerror = () => resolve([]);
++    req.onsuccess = () => {
++      const db = req.result;
++      if (!db.objectStoreNames.contains(LEGACY_STORE)) {
++        db.close();
++        return resolve([]);
++      }
++      const all = db.transaction(LEGACY_STORE, "readonly").objectStore(LEGACY_STORE).getAll();
++      all.onsuccess = () => {
++        db.close();
++        resolve((all.result as StoredPresentation[]) || []);
++      };
++      all.onerror = () => {
++        db.close();
++        resolve([]);
++      };
+     };
+-    req.onsuccess = () => resolve(req.result);
+-    req.onerror = () => reject(req.error);
+   });
+ }
+ 
+-function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+-  return openDb().then(
+-    (db) =>
+-      new Promise<T>((resolve, reject) => {
+-        const t = db.transaction(STORE, mode);
+-        const req = run(t.objectStore(STORE));
+-        t.oncomplete = () => {
+-          db.close();
+-          resolve(req.result);
+-        };
+-        t.onerror = t.onabort = () => {
+-          db.close();
+-          reject(t.error);
+-        };
+-      }),
+-  );
++async function putPresentation(p: StoredPresentation): Promise<void> {
++  await upsertDoc("presentations", {
++    _id: p.id,
++    type: "presentation",
++    name: p.name,
++    kind: p.kind,
++    slideCount: p.slides.length,
++    createdAt: p.createdAt,
++    _attachments: { [ATTACHMENT]: { content_type: "application/json", data: new Blob([JSON.stringify(p.slides)], { type: "application/json" }) } },
++  });
+ }
+ 
+-export const newPresentationId = () => `ppt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
++let migration: Promise<void> | null = null;
++function migrateOnce(): Promise<void> {
++  migration ??= (async () => {
++    try {
++      if (window.localStorage.getItem(MIGRATED_KEY)) return;
++    } catch {
++      return;
++    }
++    const old = await readLegacy();
++    if (old.length > 0) {
++      const have = await getLocalDb("presentations").allDocs({ keys: old.map((p) => p.id) });
++      for (let i = 0; i < old.length; i++) {
++        const row = have.rows[i] as { error?: string; value?: { deleted?: boolean } };
++        const clean = cleanPresentation(old[i] as unknown as Record<string, unknown>, old[i].slides);
++        if (clean && (row.error === "not_found" || row.value?.deleted)) await putPresentation(clean);
++      }
++    }
++    try {
++      window.localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
++    } catch {
++      /* ignore */
++    }
++  })();
++  return migration;
++}
++
++const newestFirst = (a: StoredPresentation, b: StoredPresentation) => b.createdAt.localeCompare(a.createdAt);
+ 
+ /** All decks, newest first. `persistent` is false when only the in-memory fallback works. */
+ export async function listPresentations(): Promise<{ presentations: StoredPresentation[]; persistent: boolean }> {
+   try {
+-    const rows = (await tx<StoredPresentation[]>("readonly", (s) => s.getAll())) || [];
++    await migrateOnce();
++    const res = await getLocalDb("presentations").allDocs({ include_docs: true, attachments: true, binary: true });
++    const rows: StoredPresentation[] = [];
++    for (const row of res.rows) {
++      const d = row.doc as unknown as (Record<string, unknown> & { _attachments?: Record<string, { data?: unknown }> }) | undefined;
++      if (!d || row.id.startsWith("_design/") || d.type !== "presentation") continue;
++      const blob = d._attachments?.[ATTACHMENT]?.data;
++      if (!(blob instanceof Blob)) continue;
++      let slides: unknown = [];
++      try {
++        slides = JSON.parse(await blob.text());
++      } catch {
++        continue;
++      }
++      const p = cleanPresentation(d, slides);
++      if (p) rows.push(p);
++    }
+     for (const r of memory.values()) if (!rows.some((x) => x.id === r.id)) rows.push(r);
+-    return { presentations: rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)), persistent: true };
++    return { presentations: rows.sort(newestFirst), persistent: true };
+   } catch {
+-    return { presentations: [...memory.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), persistent: false };
++    return { presentations: [...memory.values()].sort(newestFirst), persistent: false };
+   }
+ }
+ 
+ /** Returns false when it could only be kept in memory (lost on reload, e.g. storage full). */
+ export async function savePresentation(p: StoredPresentation): Promise<boolean> {
+   try {
+-    await tx("readwrite", (s) => s.put(p));
++    await putPresentation(p);
+     memory.delete(p.id);
+     return true;
+   } catch {
+@@ -78,8 +171,11 @@
+ export async function deletePresentation(id: string): Promise<void> {
+   memory.delete(id);
+   try {
+-    await tx("readwrite", (s) => s.delete(id));
++    await removeDoc("presentations", id);
+   } catch {
+     /* in-memory only */
+   }
+ }
++
++/** Calls `onChange` when decks change (e.g. pulled from CouchDB). */
++export const watchPresentations = (onChange: () => void) => watchLocal("presentations", onChange);
+--- base1/src/lib/songsDb.ts
++++ wtp/src/lib/songsDb.ts
+@@ -7,20 +7,15 @@
+  *  - CouchDB login uses a session cookie (POST /_session). The password is never stored.
+  * Doc shape: { _id: song.id, type: "song", ...StoredSong }.
+  */
+-import PouchDB from "pouchdb-browser";
+ import { StoredSong, sanitizeSong, loadMySongs } from "./mySongsStore";
++import { getLocalDb, watchLocal } from "./couchSync";
+ 
+-export const LOCAL_SONGS_DB = "wtp-songs";
+ const MIGRATED_KEY = "wtp.mySongs.migratedToPouch.v1";
+-const SETTINGS_KEY = "wtp-couchdb-v1";
+ 
+ type SongDoc = StoredSong & { _id: string; _rev?: string; type: "song" };
+ 
+-let db: PouchDB.Database<SongDoc> | null = null;
+-function getDb(): PouchDB.Database<SongDoc> {
+-  if (!db) db = new PouchDB<SongDoc>(LOCAL_SONGS_DB, { auto_compaction: true });
+-  return db;
+-}
++// 2026-11-03b: the PouchDB instance + CouchDB sync moved to couchSync.ts (shared with Bibles/PPT).
++const getDb = () => getLocalDb<SongDoc>("songs");
+ 
+ /** Latest known _rev of every song, needed to update/delete. */
+ const revs = new Map<string, string>();
+@@ -152,172 +147,5 @@
+   });
+ }
+ 
+-/** Calls `onChange` (debounced) whenever the local DB changes from outside this tab's saves, e.g. sync. */
+-export function watchSongs(onChange: () => void): () => void {
+-  let t: ReturnType<typeof setTimeout> | undefined;
+-  let feed: PouchDB.Core.Changes<SongDoc> | null = null;
+-  try {
+-    feed = getDb()
+-      .changes({ since: "now", live: true })
+-      .on("change", () => {
+-        clearTimeout(t);
+-        t = setTimeout(onChange, 300);
+-      })
+-      .on("error", () => undefined);
+-  } catch {
+-    /* ignore */
+-  }
+-  return () => {
+-    clearTimeout(t);
+-    feed?.cancel();
+-  };
+-}
+-
+-// ---------------------------------------------------------------- CouchDB sync
+-
+-export interface CouchSettings {
+-  url: string; // e.g. http://localhost:5984 (no user/password in it)
+-  dbName: string; // e.g. wtp_songs
+-  username: string;
+-  enabled: boolean;
+-}
+-
+-export const DEFAULT_COUCH: CouchSettings = { url: "http://localhost:5984", dbName: "wtp_songs", username: "", enabled: false };
+-
+-export type SyncState = "off" | "connecting" | "active" | "synced" | "login" | "error";
+-export interface SyncStatus {
+-  state: SyncState;
+-  message?: string;
+-  lastSync?: string;
+-}
+-
+-export function loadCouchSettings(): CouchSettings {
+-  try {
+-    const raw = window.localStorage.getItem(SETTINGS_KEY);
+-    if (!raw) return { ...DEFAULT_COUCH };
+-    const o = JSON.parse(raw) as Partial<CouchSettings>;
+-    return {
+-      url: typeof o.url === "string" ? o.url : DEFAULT_COUCH.url,
+-      dbName: typeof o.dbName === "string" ? o.dbName : DEFAULT_COUCH.dbName,
+-      username: typeof o.username === "string" ? o.username.slice(0, 80) : "",
+-      enabled: o.enabled === true,
+-    };
+-  } catch {
+-    return { ...DEFAULT_COUCH };
+-  }
+-}
+-
+-export function saveCouchSettings(s: CouchSettings): void {
+-  try {
+-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+-  } catch {
+-    /* ignore */
+-  }
+-}
+-
+-/** Checks the settings. Returns an error message (Taglish) or null when OK. */
+-export function validateCouchSettings(s: CouchSettings): string | null {
+-  let u: URL;
+-  try {
+-    u = new URL(s.url);
+-  } catch {
+-    return "Mali ang CouchDB URL (hal. http://localhost:5984).";
+-  }
+-  if (u.protocol !== "http:" && u.protocol !== "https:") return "Dapat http:// o https:// ang CouchDB URL.";
+-  if (u.username || u.password) return "Huwag ilagay ang username/password sa URL — gamitin ang Login.";
+-  if (!/^[a-z][a-z0-9_$()+/-]{0,120}$/.test(s.dbName)) return "Mali ang pangalan ng database (maliliit na letra, numero, _ lang; hal. wtp_songs).";
+-  return null;
+-}
+-
+-const baseUrl = (s: CouchSettings) => s.url.replace(/\/+$/, "");
+-const withCookies: typeof fetch = (input, init) => PouchDB.fetch(input as string, { ...init, credentials: "include" });
+-
+-/** Logs in to CouchDB (session cookie). The password is only sent, never saved. */
+-export async function couchLogin(s: CouchSettings, password: string): Promise<{ ok: boolean; error?: string }> {
+-  try {
+-    const res = await fetch(`${baseUrl(s)}/_session`, {
+-      method: "POST",
+-      credentials: "include",
+-      headers: { "Content-Type": "application/json" },
+-      body: JSON.stringify({ name: s.username, password }),
+-    });
+-    if (res.ok) return { ok: true };
+-    if (res.status === 401) return { ok: false, error: "Mali ang username o password." };
+-    return { ok: false, error: `CouchDB: HTTP ${res.status}` };
+-  } catch {
+-    return { ok: false, error: "Hindi maabot ang CouchDB. Bukas ba ito, at naka-enable ang CORS (credentials) para sa address ng app?" };
+-  }
+-}
+-
+-/** Who is logged in (null = nobody / unreachable). */
+-export async function couchSessionUser(s: CouchSettings): Promise<{ name: string | null; reachable: boolean }> {
+-  try {
+-    const res = await fetch(`${baseUrl(s)}/_session`, { credentials: "include" });
+-    if (!res.ok) return { name: null, reachable: true };
+-    const j = (await res.json()) as { userCtx?: { name?: string | null } };
+-    return { name: j.userCtx?.name ?? null, reachable: true };
+-  } catch {
+-    return { name: null, reachable: false };
+-  }
+-}
+-
+-export async function couchLogout(s: CouchSettings): Promise<void> {
+-  try {
+-    await fetch(`${baseUrl(s)}/_session`, { method: "DELETE", credentials: "include" });
+-  } catch {
+-    /* ignore */
+-  }
+-}
+-
+-let syncHandler: PouchDB.Replication.Sync<SongDoc> | null = null;
+-let syncStatus: SyncStatus = { state: "off" };
+-const syncListeners = new Set<(st: SyncStatus) => void>();
+-function onStatus(st: SyncStatus) {
+-  syncStatus = st.state === "synced" || !syncStatus.lastSync ? st : { ...st, lastSync: syncStatus.lastSync };
+-  syncListeners.forEach((fn) => fn(syncStatus));
+-}
+-
+-/** Sync keeps running while the app is open (even when the Songs tab is closed). */
+-export function subscribeSync(fn: (st: SyncStatus) => void): () => void {
+-  syncListeners.add(fn);
+-  fn(syncStatus);
+-  return () => {
+-    syncListeners.delete(fn);
+-  };
+-}
+-export const isSyncRunning = () => syncHandler !== null;
+-
+-export function stopSync(): void {
+-  syncHandler?.cancel();
+-  syncHandler = null;
+-  onStatus({ state: "off" });
+-}
+-
+-/** Starts two-way live sync with the user's CouchDB. */
+-export function startSync(s: CouchSettings): void {
+-  syncHandler?.cancel();
+-  syncHandler = null;
+-  const err = validateCouchSettings(s);
+-  if (err) {
+-    onStatus({ state: "error", message: err });
+-    return;
+-  }
+-  onStatus({ state: "connecting" });
+-  const remote = new PouchDB<SongDoc>(`${baseUrl(s)}/${encodeURIComponent(s.dbName)}`, { fetch: withCookies });
+-  const describe = (e: unknown): SyncStatus => {
+-    const status = (e as { status?: number })?.status;
+-    if (status === 401 || status === 403) return { state: "login", message: "Kailangang mag-login ulit sa CouchDB." };
+-    const m = (e as { message?: string; reason?: string })?.reason || (e as { message?: string })?.message;
+-    return { state: "error", message: m ? `Sync error: ${m}` : "Hindi maabot ang CouchDB — susubok ulit." };
+-  };
+-  const handler = getDb().sync(remote, { live: true, retry: true });
+-  syncHandler = handler;
+-  handler
+-    .on("active", () => syncHandler === handler && onStatus({ state: "active" }))
+-    .on("paused", (e) => {
+-      if (syncHandler !== handler) return;
+-      onStatus(e ? describe(e) : { state: "synced", lastSync: new Date().toISOString() });
+-    })
+-    .on("denied", (e) => syncHandler === handler && onStatus(describe(e)))
+-    .on("error", (e) => syncHandler === handler && onStatus(describe(e)));
+-}
++/** Calls `onChange` (debounced) whenever the local songs DB changes, e.g. pulled by sync. */
++export const watchSongs = (onChange: () => void) => watchLocal("songs", onChange);

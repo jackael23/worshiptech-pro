@@ -2,7 +2,9 @@
  * 2026-10-20 (Jarvis): full Bibles imported by the user from a WorshipTech-Pro Bible JSON
  * (e.g. KJV, Ang Dating Biblia 1905 — public domain). Stored in IndexedDB (a full Bible is
  * ~4–5 MB, too big for localStorage). Never sent to the server.
+ * 2026-11-03b: storage = PouchDB + optional sync to the user's own CouchDB (see couchSync.ts).
  */
+import { getLocalDb, upsertDoc, removeDoc, watchLocal } from "./couchSync";
 export interface WtpBibleBook {
   name: string; // English
   tl?: string; // Tagalog
@@ -35,45 +37,80 @@ export interface BibleMeta {
 
 export const BIBLE_LIMITS = { MAX_FILE_BYTES: 20 * 1024 * 1024, MAX_VERSES: 40000, MAX_VERSE_CHARS: 3000, MAX_BIBLES: 10 };
 
-const DB_NAME = "wtp-bibles";
-const DB_VERSION = 1;
-const memory = new Map<string, WtpBible>(); // cache + fallback when IndexedDB is unavailable
+// 2026-11-03b: Bibles live in PouchDB ("wtp-bibles-pdb", synced to CouchDB "wtp_bibles" when the
+// user logs in). Doc = meta fields + the whole Bible as attachment "bible.json" (~4–5 MB).
+// The old IndexedDB "wtp-bibles" (10-20) is read once to migrate, then left as a backup.
+const LEGACY_DB = "wtp-bibles";
+const MIGRATED_KEY = "wtp.bibles.migratedToPouch.v1";
+const ATTACHMENT = "bible.json";
+const memory = new Map<string, WtpBible>(); // cache + fallback when the database is unavailable
 const memoryMeta = new Map<string, BibleMeta>();
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") return reject(new Error("IndexedDB unavailable"));
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+type BibleDoc = BibleMeta & { _id: string; type: "bible" };
+
+/** Reads every Bible from the old IndexedDB store (empty when it never existed). */
+function readLegacyBibles(): Promise<WtpBible[]> {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") return resolve([]);
+    const req = indexedDB.open(LEGACY_DB);
+    req.onupgradeneeded = () => req.transaction?.abort(); // didn't exist: don't create it
+    req.onerror = () => resolve([]);
+    req.onsuccess = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains("bibles")) db.createObjectStore("bibles", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("bibles")) {
+        db.close();
+        return resolve([]);
+      }
+      const all = db.transaction("bibles", "readonly").objectStore("bibles").getAll();
+      all.onsuccess = () => {
+        db.close();
+        resolve((all.result as WtpBible[]) || []);
+      };
+      all.onerror = () => {
+        db.close();
+        resolve([]);
+      };
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
   });
 }
 
-function tx<T>(store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
-  return openDb().then(
-    (db) =>
-      new Promise<T | undefined>((resolve, reject) => {
-        const t = db.transaction(store, mode);
-        const req = run(t.objectStore(store));
-        t.oncomplete = () => {
-          db.close();
-          resolve(req ? (req.result as T) : undefined);
-        };
-        t.onerror = () => {
-          db.close();
-          reject(t.error);
-        };
-        t.onabort = () => {
-          db.close();
-          reject(t.error);
-        };
-      }),
-  );
+async function putBible(b: WtpBible, importedAt = new Date().toISOString()): Promise<void> {
+  const meta = { ...toMeta(b), importedAt };
+  const doc = {
+    ...meta,
+    _id: b.id,
+    type: "bible" as const,
+    _attachments: { [ATTACHMENT]: { content_type: "application/json", data: new Blob([JSON.stringify(b)], { type: "application/json" }) } },
+  };
+  await upsertDoc("bibles", doc);
+}
+
+let migration: Promise<void> | null = null;
+function migrateOnce(): Promise<void> {
+  migration ??= (async () => {
+    try {
+      if (window.localStorage.getItem(MIGRATED_KEY)) return;
+    } catch {
+      return;
+    }
+    const old = await readLegacyBibles();
+    if (old.length > 0) {
+      const have = await getLocalDb("bibles").allDocs({ keys: old.map((b) => b.id) });
+      for (let i = 0; i < old.length; i++) {
+        const row = have.rows[i] as { error?: string; value?: { deleted?: boolean } };
+        if (row.error === "not_found" || row.value?.deleted) {
+          const { bible } = validateBible(old[i]);
+          if (bible) await putBible(bible);
+        }
+      }
+    }
+    try {
+      window.localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
+    } catch {
+      /* ignore */
+    }
+  })();
+  return migration;
 }
 
 export function toMeta(b: WtpBible): BibleMeta {
@@ -91,8 +128,23 @@ export function toMeta(b: WtpBible): BibleMeta {
 /** Lists imported Bibles. `persistent` is false when only the in-memory fallback works. */
 export async function listBibles(): Promise<{ bibles: BibleMeta[]; persistent: boolean }> {
   try {
-    const rows = (await tx<BibleMeta[]>("meta", "readonly", (s) => s.getAll())) || [];
-    return { bibles: rows.sort((a, b) => a.shortName.localeCompare(b.shortName)), persistent: true };
+    await migrateOnce();
+    const res = await getLocalDb<BibleDoc>("bibles").allDocs({ include_docs: true });
+    const bibles: BibleMeta[] = [];
+    for (const row of res.rows) {
+      const d = row.doc;
+      if (!d || row.id.startsWith("_design/") || d.type !== "bible") continue;
+      bibles.push({
+        id: d._id,
+        name: String(d.name || d._id),
+        shortName: String(d.shortName || d._id),
+        language: String(d.language || "en"),
+        license: String(d.license || ""),
+        verseCount: Number(d.verseCount) || 0,
+        importedAt: String(d.importedAt || ""),
+      });
+    }
+    return { bibles: bibles.sort((a, b) => a.shortName.localeCompare(b.shortName)), persistent: true };
   } catch {
     return { bibles: [...memoryMeta.values()], persistent: false };
   }
@@ -102,9 +154,11 @@ export async function getBible(id: string): Promise<WtpBible | null> {
   const cached = memory.get(id);
   if (cached) return cached;
   try {
-    const b = await tx<WtpBible>("bibles", "readonly", (s) => s.get(id));
-    if (b) memory.set(id, b);
-    return b || null;
+    const blob = (await getLocalDb("bibles").getAttachment(id, ATTACHMENT)) as Blob;
+    // Synced from CouchDB = outside data: validate again before use.
+    const { bible } = validateBible(JSON.parse(await blob.text()));
+    if (bible) memory.set(id, bible);
+    return bible || null;
   } catch {
     return null;
   }
@@ -113,11 +167,9 @@ export async function getBible(id: string): Promise<WtpBible | null> {
 /** Saves a validated Bible. Returns false when it could only be kept in memory (lost on reload). */
 export async function saveBible(b: WtpBible): Promise<boolean> {
   memory.set(b.id, b);
-  const meta = toMeta(b);
-  memoryMeta.set(b.id, meta);
+  memoryMeta.set(b.id, toMeta(b));
   try {
-    await tx("bibles", "readwrite", (s) => s.put(b));
-    await tx("meta", "readwrite", (s) => s.put(meta));
+    await putBible(b);
     return true;
   } catch {
     return false;
@@ -128,11 +180,18 @@ export async function deleteBible(id: string): Promise<void> {
   memory.delete(id);
   memoryMeta.delete(id);
   try {
-    await tx("bibles", "readwrite", (s) => s.delete(id));
-    await tx("meta", "readwrite", (s) => s.delete(id));
+    await removeDoc("bibles", id);
   } catch {
     /* in-memory only */
   }
+}
+
+/** Calls `onChange` when Bibles change (e.g. pulled from CouchDB); clears the cache first. */
+export function watchBibles(onChange: () => void): () => void {
+  return watchLocal("bibles", () => {
+    memory.clear();
+    onChange();
+  });
 }
 
 const isStr = (v: unknown, max: number) => typeof v === "string" && v.trim().length > 0 && v.length <= max;

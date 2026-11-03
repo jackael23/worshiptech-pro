@@ -4,13 +4,15 @@
  *  - Full Bibles imported from a .wtp-bible.json file (KJV, Ang Dating Biblia 1905 — public
  *    domain), saved in IndexedDB. Type a reference ("Juan 3:16", "Awit 23", "1 Cor 13:4-7")
  *    or a word to search.
+ * 2026-11-03b: saved in PouchDB + optional CouchDB sync (bibleStore.ts / couchSync.ts).
  */
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Upload, Settings2, Trash2, Info, AlertTriangle, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { ScriptureVerse } from "../types";
 import { SAMPLE_VERSES, BIBLE_VERSIONS, BIBLE_COPYRIGHT, scriptureSlideText } from "../data/easyworshipData";
 import { BIBLE_BOOKS, parseReference } from "../lib/bibleBooks";
-import { BibleMeta, WtpBible, BIBLE_LIMITS, listBibles, getBible, saveBible, deleteBible, validateBible, toMeta } from "../lib/bibleStore";
+import { BibleMeta, WtpBible, BIBLE_LIMITS, listBibles, getBible, saveBible, deleteBible, validateBible, toMeta, watchBibles } from "../lib/bibleStore";
+import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
 export interface Passage {
   title: string;
@@ -61,11 +63,22 @@ export const BibleLibrary: React.FC<BibleLibraryProps> = ({ searchQuery, onAddPa
     browseTopRef.current?.scrollIntoView({ block: "nearest" });
   };
 
+  // 2026-11-03b: bumped when Bibles change in the database (e.g. pulled from CouchDB) → reload.
+  const [dbRev, setDbRev] = useState(0);
   useEffect(() => {
+    let alive = true;
     listBibles().then(({ bibles, persistent: p }) => {
+      if (!alive) return;
       setImported(bibles);
       setPersistent(p);
     });
+    return () => {
+      alive = false;
+    };
+  }, [dbRev]);
+  useEffect(() => {
+    void autoStartCouchSync();
+    return watchBibles(() => setDbRev((r) => r + 1));
   }, []);
 
   // Load the selected imported Bible.
@@ -88,7 +101,7 @@ export const BibleLibrary: React.FC<BibleLibraryProps> = ({ searchQuery, onAddPa
     return () => {
       alive = false;
     };
-  }, [selected]);
+  }, [selected, dbRev]);
 
   useEffect(() => {
     if (!notice) return;
@@ -431,6 +444,8 @@ export const BibleLibrary: React.FC<BibleLibraryProps> = ({ searchQuery, onAddPa
         )}
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImport} data-testid="bible-import-input" />
       </div>
+
+      <CouchSyncPanel />
 
       {busy && (
         <p className="text-xs text-fg-muted flex items-center gap-1.5">
