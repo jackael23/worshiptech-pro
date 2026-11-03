@@ -34,6 +34,7 @@ import {
   BackgroundSettings,
 } from "../types";
 import { INITIAL_SCHEDULE } from "../data/easyworshipData";
+import { getCachedSchedule, loadSchedule, saveSchedule, loadSelectedIndex, saveSelectedIndex } from "../lib/scheduleStore";
 import { SongLibrary } from "./SongLibrary";
 import { BibleLibrary, Passage } from "./BibleLibrary";
 import { PresentationLibrary } from "./PresentationLibrary";
@@ -65,8 +66,44 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   // Simulator Local States
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTabType>("songs");
   const [searchQuery, setSearchQuery] = useState("");
-  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(INITIAL_SCHEDULE);
-  const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
+  // 2026-11-03c (Jarvis): the schedule is kept (browser database) until the user changes/removes items.
+  // The sample schedule shows only on the very first run. See lib/scheduleStore.ts.
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(() => getCachedSchedule() ?? INITIAL_SCHEDULE);
+  const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(() => {
+    const cached = getCachedSchedule();
+    return cached ? Math.min(loadSelectedIndex(), cached.length - 1) : 0;
+  });
+  const scheduleLoaded = useRef(getCachedSchedule() !== null);
+  useEffect(() => {
+    if (scheduleLoaded.current) return;
+    let alive = true;
+    loadSchedule().then((saved) => {
+      if (!alive) return;
+      if (saved && saved.length > 0) {
+        setScheduleItems(saved);
+        setSelectedScheduleIndex(Math.min(loadSelectedIndex(), saved.length - 1));
+        setSelectedSlideIndex(0);
+        // The app opens with a demo slide "on air" (sample schedule). If that item isn't in the
+        // saved schedule, show Standby instead of a slide that isn't there.
+        setLiveState((prev) =>
+          prev.activeScheduleItemId && !saved.some((i) => i.id === prev.activeScheduleItemId)
+            ? { ...prev, isLive: false, activeScheduleItemId: null, currentSlideText: "", currentSlideLabel: "", nextSlideText: undefined }
+            : prev,
+        );
+      }
+      scheduleLoaded.current = true;
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  useEffect(() => {
+    // don't overwrite the saved schedule with the sample before it has been read
+    if (scheduleLoaded.current) saveSchedule(scheduleItems);
+  }, [scheduleItems]);
+  useEffect(() => {
+    if (scheduleLoaded.current) saveSelectedIndex(selectedScheduleIndex);
+  }, [selectedScheduleIndex]);
   const [selectedSlideIndex, setSelectedSlideIndex] = useState<number>(0);
   const [previewOutputMode, setPreviewOutputMode] = useState<"main" | "foldback" | "ndi">("main");
   const [customAlertInput, setCustomAlertInput] = useState("Nursery: Parent #104 please come to Nursery");
