@@ -1,0 +1,52 @@
+warning: in the working copy of '.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'bibles/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'bun.lock', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'firebase.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'metadata.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'remoteServer.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/BibleLibrary.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/ChatAssistant.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/Header.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/LiveScreen.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/MediaLibrary.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/OutputWindow.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/PresentationLibrary.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/RemoteControl.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/ShortcutsPanel.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/SlideScreen.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/SongEditorModal.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/SongLibrary.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/TextStyleEditor.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/VisualGuidesDeck.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/WorkflowCanvasSimulator.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/data/easyworshipData.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/index.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/bibleBooks.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/bibleStore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/liveChannel.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/lyricsParser.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/mediaStore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/mySongsStore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/pptxImport.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/presentationStore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/remoteLink.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/songImport.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/lib/textStyle.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/main.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/types.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tsconfig.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'vite.config.ts', LF will be replaced by CRLF the next time Git touches it
+ package-lock.json                  | 132 [32m+++++++++++++++++++++++++++++++++++++[m
+ package.json                       |   3 [32m+[m
+ src/components/LiveScreen.tsx      |   2 [32m+[m[31m-[m
+ src/components/SongEditorModal.tsx |   2 [32m+[m[31m-[m
+ src/components/SongLibrary.tsx     |  58 [32m++++++++++++[m[31m----[m
+ src/lib/mySongsStore.ts            |   8 [32m++[m[31m-[m
+ 6 files changed, 187 insertions(+), 18 deletions(-)

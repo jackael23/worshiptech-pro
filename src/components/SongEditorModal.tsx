@@ -124,7 +124,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
             </div>
             <p className="mt-2 text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5 flex gap-1.5">
               <Info className="w-4 h-4 shrink-0" />
-              <span>Naka-save lang sa browser na ito at hindi ipinapadala kahit saan. Gamitin lang ang lyrics kung may CCLI license ang simbahan ninyo.</span>
+              <span>Naka-save sa browser na ito (at sa sarili mong CouchDB kapag naka-on ang sync); hindi ipinapadala sa AI o sa ibang server. Gamitin lang ang lyrics kung may CCLI license ang simbahan ninyo.</span>
             </p>
           </div>
         </div>

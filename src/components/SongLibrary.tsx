@@ -4,6 +4,7 @@
  *  - My Songs: added by the user (browser only), with edit / delete / export / import.
  *  - Reference: popular modern songs, title + artist only (no lyrics). "Add lyrics" turns
  *    one into a My Song that the user fills in themselves.
+ * 2026-11-03: My Songs are saved in PouchDB (browser) + optional CouchDB sync (songsDb.ts).
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle } from "lucide-react";
@@ -13,8 +14,6 @@ import {
   StoredSong,
   SongDraft,
   MY_SONGS_LIMITS,
-  loadMySongs,
-  saveMySongs,
   toSongItem,
   newSongId,
   exportMySongsJson,
@@ -23,6 +22,8 @@ import {
 } from "../lib/mySongsStore";
 import { decodeTextFile, parseSongFile, SONG_FILE_EXTENSIONS, MAX_SONG_FILE_BYTES } from "../lib/songImport";
 import { SongEditorModal } from "./SongEditorModal";
+import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
+import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
 type SongFilter = "all" | "sample" | "user" | "reference";
 
@@ -53,10 +54,32 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Always the latest list, so async saves diff against what is really on screen.
+  const mySongsRef = useRef<StoredSong[]>([]);
+  const setSongs = (next: StoredSong[]) => {
+    mySongsRef.current = next;
+    setMySongs(next);
+  };
+
   useEffect(() => {
-    const { songs, available } = loadMySongs();
-    setMySongs(songs);
-    setStorageOk(available);
+    let alive = true;
+    loadSongsFromDb().then(({ songs, available, migrated }) => {
+      if (!alive) return;
+      setSongs(songs);
+      setStorageOk(available);
+      if (migrated > 0) setNotice({ text: `Nailipat ang ${migrated} kanta sa bagong database (PouchDB).`, tone: "ok" });
+    });
+    void autoStartCouchSync();
+    // Changes pulled from CouchDB (or another tab) → refresh the list.
+    const stop = watchSongs(() => {
+      reloadSongs()
+        .then((songs) => alive && setSongs(songs))
+        .catch(() => undefined);
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -66,10 +89,17 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   }, [notice]);
 
   const persist = (next: StoredSong[]) => {
-    setMySongs(next);
-    const ok = saveMySongs(next);
-    setStorageOk(ok);
-    if (!ok) setNotice({ text: "Hindi na-save sa browser (blocked o puno). Mawawala ito pag-reload; i-Export para may backup.", tone: "warn" });
+    const prev = mySongsRef.current;
+    setSongs(next);
+    saveSongsDiff(prev, next)
+      .then((ok) => {
+        setStorageOk(ok);
+        if (!ok) setNotice({ text: "Hindi na-save ang ilang kanta sa database. I-Export para may backup, saka i-reload.", tone: "warn" });
+      })
+      .catch(() => {
+        setStorageOk(false);
+        setNotice({ text: "Hindi ma-save sa database (blocked o puno). Mawawala ito pag-reload; i-Export para may backup.", tone: "warn" });
+      });
   };
 
   const handleSave = (draft: SongDraft) => {
@@ -127,7 +157,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         if (song) drafts.push(song);
         else if (error) errors.push(error);
       }
-      const r = upsertSongs(mySongs, drafts);
+      const r = upsertSongs(mySongsRef.current, drafts);
       if (r.added || r.updated) {
         persist(r.songs);
         setFilter("user");
@@ -142,10 +172,10 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     const file = files.find((f) => f.name.toLowerCase().endsWith(".json"));
     if (!file) return;
     if (file.size > MY_SONGS_LIMITS.MAX_IMPORT_BYTES) {
-      setNotice({ text: "Masyadong malaki ang file (max 2 MB).", tone: "warn" });
+      setNotice({ text: "Masyadong malaki ang file (max 20 MB).", tone: "warn" });
       return;
     }
-    const result = importMySongsJson(await file.text(), mySongs);
+    const result = importMySongsJson(await file.text(), mySongsRef.current);
     if (result.error) {
       setNotice({ text: result.error, tone: "warn" });
       return;
@@ -204,10 +234,12 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         <input ref={fileInputRef} type="file" multiple accept={[".json", ...SONG_FILE_EXTENSIONS].join(",")} className="hidden" onChange={handleImportFile} data-testid="import-input" />
       </div>
 
+      <CouchSyncPanel />
+
       {!storageOk && (
         <p className="text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5 flex gap-1.5">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          Hindi makapag-save sa browser na ito (private mode?). Mawawala ang My Songs pag-reload — i-Export para may backup.
+          Hindi makapag-save sa database ng browser na ito (private mode?). Mawawala ang My Songs pag-reload — i-Export para may backup.
         </p>
       )}
       {notice && (

@@ -1,6 +1,8 @@
 /**
  * 2026-10-20 (Jarvis): "My Songs" — songs the USER types/pastes in.
  * Saved only in this browser (localStorage). Never sent to the server or the AI.
+ * 2026-11-03: storage moved to PouchDB + optional CouchDB sync (see songsDb.ts). The functions
+ * here (sanitize, import/export, upsert) are still used; loadMySongs() = old list, for migration.
  * The app ships no copyrighted lyrics; the user's church licence (e.g. CCLI) covers their use.
  */
 import { SongItem } from "../types";
@@ -8,11 +10,11 @@ import { parseLyrics } from "./lyricsParser";
 
 export const MY_SONGS_STORAGE_KEY = "wtp.mySongs.v1";
 export const MY_SONGS_LIMITS = {
-  MAX_SONGS: 200,
+  MAX_SONGS: 5000, // 2026-11-03: was 200 (localStorage); now PouchDB/CouchDB
   MAX_LYRICS: 10000,
   MAX_TITLE: 120,
   MAX_FIELD: 80, // author, key, ccli
-  MAX_IMPORT_BYTES: 2 * 1024 * 1024,
+  MAX_IMPORT_BYTES: 20 * 1024 * 1024, // 2026-11-03: was 2 MB
 };
 const USER_SONG_BACKGROUND = "linear-gradient(135deg, #334155 0%, #0f172a 100%)";
 
@@ -127,7 +129,7 @@ export interface ImportResult {
 /** Merges an exported file into the current list: same id = replace, new id = add. */
 export function importMySongsJson(text: string, current: StoredSong[]): ImportResult {
   const fail = (error: string): ImportResult => ({ songs: current, added: 0, updated: 0, skipped: 0, error });
-  if (text.length > MY_SONGS_LIMITS.MAX_IMPORT_BYTES) return fail("Masyadong malaki ang file (max 2 MB).");
+  if (text.length > MY_SONGS_LIMITS.MAX_IMPORT_BYTES) return fail("Masyadong malaki ang file (max 20 MB).");
   let data: unknown;
   try {
     data = JSON.parse(text);
