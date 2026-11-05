@@ -85,6 +85,43 @@ ${HOTKEYS_TEXT}
 - WARNING: [Ctrl + L] is LOGO, not Go Live. F5 / F6 / F7 are NOT EasyWorship hotkeys. Never invent other hotkeys.
 - For EasyWorship 6 or 2009, say these are the EW7 keys and ask the user to confirm in that version's Help menu.`;
 
+// ---------------------------------------------------------------------------
+// 2026-11-05 (Jarvis): auto-stop — when the app is closed on the laptop, the server
+// (the CMD window) stops by itself. Every laptop page (main app + projector windows,
+// not phones) keeps /api/app/presence open. When the last one closes, the server waits
+// AUTO_STOP.GRACE_MS (a page refresh reconnects well before that) and then exits.
+// It never stops before the first page has opened. AUTO_STOP=0 in .env turns this off.
+// ---------------------------------------------------------------------------
+const AUTO_STOP = { GRACE_MS: 15000, HEARTBEAT_MS: 15000 };
+
+function registerAutoStop(app: express.Express) {
+  if (process.env.AUTO_STOP === "0") return;
+  const pages = new Set<express.Response>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  setInterval(() => pages.forEach((p) => p.write(": ping\n\n")), AUTO_STOP.HEARTBEAT_MS).unref();
+
+  app.get("/api/app/presence", (req, res) => {
+    const a = req.socket.remoteAddress || "";
+    if (a !== "127.0.0.1" && a !== "::1" && a !== "::ffff:127.0.0.1") return res.status(403).end();
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
+    res.write("retry: 1000\n\n");
+    pages.add(res);
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    req.on("close", () => {
+      pages.delete(res);
+      if (pages.size || timer) return;
+      timer = setTimeout(() => {
+        console.log("App closed on the laptop — stopping the server. (AUTO_STOP=0 in .env to keep it running)");
+        process.exit(0);
+      }, AUTO_STOP.GRACE_MS);
+    });
+  });
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -94,6 +131,7 @@ async function startServer() {
   // 2026-10-29 (Jarvis): phone remote (same WiFi). Registered before the 64kb JSON parser
   // because the laptop's snapshot (with small slide pictures) can be bigger.
   registerRemoteRoutes(app, PORT);
+  registerAutoStop(app);
   app.use(express.json({ limit: LIMITS.BODY_MAX }));
 
   // Health check

@@ -6,19 +6,22 @@
  *  - CouchDB login uses a session cookie (POST /_session). The password is never stored.
  *  - Big things (a whole Bible, picture slides) are saved as attachments, so the JSON body of
  *    each doc stays small (CouchDB's max_document_size does not count attachments).
+ * 2026-11-05: 4th database "media" — Media-tab background pictures and videos
+ *    (local "wtp-media-pdb", remote wtp_media; the file itself is an attachment).
  */
 import PouchDB from "pouchdb-browser";
 
-export type DbKind = "songs" | "bibles" | "presentations";
-export const DB_KINDS: DbKind[] = ["songs", "bibles", "presentations"];
+export type DbKind = "songs" | "bibles" | "presentations" | "media";
+export const DB_KINDS: DbKind[] = ["songs", "bibles", "presentations", "media"];
 
 const LOCAL_NAMES: Record<DbKind, string> = {
   songs: "wtp-songs",
   bibles: "wtp-bibles-pdb",
   presentations: "wtp-presentations-pdb",
+  media: "wtp-media-pdb",
 };
-/** Docs per replication batch: small for Bibles/PPT (each can be several MB). */
-const BATCH: Record<DbKind, number> = { songs: 100, bibles: 1, presentations: 2 };
+/** Docs per replication batch: small for Bibles/PPT (each can be several MB); 1 for media (a video can be 200 MB). */
+const BATCH: Record<DbKind, number> = { songs: 100, bibles: 1, presentations: 2, media: 1 };
 const SETTINGS_KEY = "wtp-couchdb-v1";
 
 const dbs = new Map<DbKind, PouchDB.Database<any>>();
@@ -81,6 +84,7 @@ export interface CouchSettings {
   dbName: string; // songs, e.g. wtp_songs
   bibleDbName: string; // e.g. wtp_bibles
   pptDbName: string; // e.g. wtp_presentations
+  mediaDbName: string; // e.g. wtp_media (2026-11-05)
   username: string;
   enabled: boolean;
 }
@@ -90,11 +94,13 @@ export const DEFAULT_COUCH: CouchSettings = {
   dbName: "wtp_songs",
   bibleDbName: "wtp_bibles",
   pptDbName: "wtp_presentations",
+  mediaDbName: "wtp_media",
   username: "",
   enabled: false,
 };
 
-export const remoteName = (s: CouchSettings, kind: DbKind) => (kind === "songs" ? s.dbName : kind === "bibles" ? s.bibleDbName : s.pptDbName);
+export const remoteName = (s: CouchSettings, kind: DbKind) =>
+  kind === "songs" ? s.dbName : kind === "bibles" ? s.bibleDbName : kind === "presentations" ? s.pptDbName : s.mediaDbName;
 
 export type SyncState = "off" | "connecting" | "active" | "synced" | "login" | "error";
 export interface SyncStatus {
@@ -114,6 +120,7 @@ export function loadCouchSettings(): CouchSettings {
       dbName: str(o.dbName, DEFAULT_COUCH.dbName),
       bibleDbName: str(o.bibleDbName, DEFAULT_COUCH.bibleDbName), // older settings (11-03) had songs only
       pptDbName: str(o.pptDbName, DEFAULT_COUCH.pptDbName),
+      mediaDbName: str(o.mediaDbName, DEFAULT_COUCH.mediaDbName), // older settings (before 11-05) had no media
       username: str(o.username, "").slice(0, 80),
       enabled: o.enabled === true,
     };
@@ -144,7 +151,7 @@ export function validateCouchSettings(s: CouchSettings): string | null {
   if (u.username || u.password) return "Huwag ilagay ang username/password sa URL — gamitin ang Login.";
   const names = DB_KINDS.map((k) => remoteName(s, k));
   if (!names.every((n) => DB_NAME_RE.test(n))) return "Mali ang pangalan ng database (maliliit na letra, numero, _ lang; hal. wtp_songs).";
-  if (new Set(names).size !== names.length) return "Magkakaiba dapat ang pangalan ng database ng Songs, Bible at PPT.";
+  if (new Set(names).size !== names.length) return "Magkakaiba dapat ang pangalan ng database ng Songs, Bible, PPT at Media.";
   return null;
 }
 
@@ -188,15 +195,15 @@ export async function couchLogout(s: CouchSettings): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------- live sync (3 DBs)
+// ---------------------------------------------------------------- live sync (4 DBs)
 
-const KIND_LABEL: Record<DbKind, string> = { songs: "Songs", bibles: "Bible", presentations: "PPT" };
+const KIND_LABEL: Record<DbKind, string> = { songs: "Songs", bibles: "Bible", presentations: "PPT", media: "Media" };
 const handlers = new Map<DbKind, PouchDB.Replication.Sync<{}>>();
 const perKind = new Map<DbKind, SyncStatus>();
 let syncStatus: SyncStatus = { state: "off" };
 const syncListeners = new Set<(st: SyncStatus) => void>();
 
-/** One status for all three: error > login > connecting > active > synced. */
+/** One status for all four: error > login > connecting > active > synced. */
 function publish() {
   const list = DB_KINDS.map((k) => ({ k, st: perKind.get(k) })).filter((x): x is { k: DbKind; st: SyncStatus } => !!x.st);
   let next: SyncStatus;
@@ -213,7 +220,7 @@ function publish() {
   syncListeners.forEach((fn) => fn(syncStatus));
 }
 
-/** Sync keeps running while the app is open (even when the Songs/Bible/PPT tab is closed). */
+/** Sync keeps running while the app is open (even when the Songs/Bible/PPT/Media tab is closed). */
 export function subscribeSync(fn: (st: SyncStatus) => void): () => void {
   syncListeners.add(fn);
   fn(syncStatus);
@@ -230,7 +237,7 @@ export function stopSync(): void {
   publish();
 }
 
-/** Starts two-way live sync of Songs, Bibles and PPT with the user's CouchDB. */
+/** Starts two-way live sync of Songs, Bibles, PPT and Media with the user's CouchDB. */
 export function startSync(s: CouchSettings): void {
   handlers.forEach((h) => h.cancel());
   handlers.clear();

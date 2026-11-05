@@ -5,8 +5,9 @@
  *  Host (laptop) — ONLY from this computer (127.0.0.1 / ::1):
  *    GET  /api/remote/info         PIN + LAN links + how many phones are connected
  *    POST /api/remote/new-pin      new PIN; every connected phone is logged out
- *    GET  /api/remote/host-events  SSE: commands from phones + phone count
+ *    GET  /api/remote/host-events  SSE: commands from phones + phone count + which tab is in charge
  *    POST /api/remote/host-state   snapshot (live screen + schedule) → sent to all phones
+ *    POST /api/remote/take-over    this tab becomes the one the phones follow
  *  Remote (phone) — needs the PIN:
  *    POST /api/remote/login        {pin} → {token}   (limited tries per IP)
  *    GET  /api/remote/events       SSE (?token=): snapshots + whether the laptop is connected
@@ -15,6 +16,12 @@
  *
  * Uses Server-Sent Events (plain HTTP) — no extra packages. The PIN changes every time
  * the server starts, and is only shown on the laptop (and in the server console).
+ *
+ * 2026-11-05: only ONE laptop tab is in charge ("active host"). Each tab keeps its own schedule
+ * (browser storage), so before, the phone showed whichever tab sent last, and phone commands
+ * ran in every tab. Now the newest tab takes over; snapshots from other tabs are refused (409),
+ * commands go to the active tab only, and the other tabs are told so (they show a warning).
+ * Header X-Host-Id = the id the tab got in its "role" message on host-events.
  */
 import express, { Express, Request, Response } from "express";
 import crypto from "crypto";
@@ -90,7 +97,8 @@ const send = (res: Response, data: unknown) => res.write(`data: ${JSON.stringify
 export function registerRemoteRoutes(app: Express, port: number) {
   let pin = newPin();
   const tokens = new Set<string>();
-  const hosts = new Set<Response>();
+  const hosts = new Map<Response, string>(); // res → host id
+  let activeHost: Response | null = null;
   const remotes = new Map<Response, string>(); // res → token
   const loginTries = new Map<string, { count: number; resetAt: number }>();
   const cmdRate = new Map<string, { count: number; at: number }>();
@@ -102,7 +110,16 @@ export function registerRemoteRoutes(app: Express, port: number) {
   };
   log();
 
-  const tellHosts = (data: unknown) => hosts.forEach((h) => send(h, data));
+  const tellHosts = (data: unknown) => hosts.forEach((_id, h) => send(h, data));
+  const setActive = (res: Response | null) => {
+    if (activeHost !== res) lastState = ""; // the new tab sends its own snapshot right away
+    activeHost = res;
+    hosts.forEach((id, h) => send(h, { type: "role", hostId: id, active: h === res }));
+  };
+  const isActiveId = (req: Request) => {
+    const id = String(req.get("X-Host-Id") || "");
+    return !!activeHost && !!id && hosts.get(activeHost) === id;
+  };
   const tellRemotes = (data: unknown) => remotes.forEach((_t, r) => send(r, data));
   const counts = () => {
     tellHosts({ type: "remotes", count: remotes.size });
@@ -110,7 +127,7 @@ export function registerRemoteRoutes(app: Express, port: number) {
   };
 
   setInterval(() => {
-    hosts.forEach((h) => h.write(": ping\n\n"));
+    hosts.forEach((_id, h) => h.write(": ping\n\n"));
     remotes.forEach((_t, r) => r.write(": ping\n\n"));
     const now = Date.now();
     for (const [k, v] of loginTries) if (now >= v.resetAt) loginTries.delete(k);
@@ -145,16 +162,27 @@ export function registerRemoteRoutes(app: Express, port: number) {
   app.get("/api/remote/host-events", localOnly, (req, res) => {
     if (hosts.size >= RL.MAX_HOSTS) return res.status(429).end();
     openSse(res);
-    hosts.add(res);
+    hosts.set(res, crypto.randomBytes(12).toString("hex"));
+    setActive(res); // the newest tab takes over
     send(res, { type: "remotes", count: remotes.size });
     counts();
     req.on("close", () => {
       hosts.delete(res);
+      if (activeHost === res) setActive([...hosts.keys()].pop() ?? null); // next newest tab
       counts();
     });
   });
 
+  app.post("/api/remote/take-over", localOnly, (req, res) => {
+    const id = String(req.get("X-Host-Id") || "");
+    const h = [...hosts].find(([, hid]) => hid === id)?.[0];
+    if (!h) return res.status(404).end();
+    setActive(h);
+    res.status(204).end();
+  });
+
   app.post("/api/remote/host-state", localOnly, express.json({ limit: RL.STATE_BODY }), (req, res) => {
+    if (!isActiveId(req)) return res.status(409).end(); // another tab is in charge
     if (!req.body || typeof req.body !== "object") return res.status(400).end();
     lastState = JSON.stringify({ type: "state", state: req.body });
     remotes.forEach((_t, r) => r.write(`data: ${lastState}\n\n`));
@@ -216,8 +244,8 @@ export function registerRemoteRoutes(app: Express, port: number) {
     } else cmdRate.set(token, { count: 1, at: now });
     const cmd = cleanCmd(req.body?.cmd);
     if (!cmd) return res.status(400).json({ error: "Hindi kilalang command." });
-    if (!hosts.size) return res.status(409).json({ error: "Buksan ang Simulator sa laptop." });
-    tellHosts({ type: "cmd", cmd });
+    if (!activeHost) return res.status(409).json({ error: "Buksan ang Simulator sa laptop." });
+    send(activeHost, { type: "cmd", cmd }); // only the tab in charge runs phone commands
     res.status(204).end();
   });
 }

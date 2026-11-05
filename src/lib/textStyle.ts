@@ -19,7 +19,7 @@ export const DEFAULT_TEXT_STYLE: TextStyle = {
 };
 
 export const SCALE_MIN = 0.5;
-export const SCALE_MAX = 1.5;
+export const SCALE_MAX = 2; // 2026-11-05: was 1.5 — bigger text for big rooms (auto-fit still keeps it on screen)
 
 /** Fonts that are on (almost) every Windows PC. `w` = average glyph width in em, for auto-fit. */
 export const FONT_PRESETS: { name: string; stack: string; w: number }[] = [

@@ -4,25 +4,27 @@
  *  - Click a picture = background of the selected schedule item (shows on Live right away if on air).
  *  - Per item: Dim (0–70%), Fill / Fit, Blur, Remove background.
  *  - Built-in offline backgrounds (CSS, no internet needed).
+ * 2026-11-05 (Mira): + videos (MP4/WebM, muted loop) and CouchDB sync of uploads ("wtp_media").
  */
 import React, { useEffect, useRef, useState } from "react";
-import { ImagePlus, Loader2, Trash2, AlertTriangle, X, Check } from "lucide-react";
+import { ImagePlus, Loader2, Trash2, AlertTriangle, X, Check, Play } from "lucide-react";
 import type { BackgroundSettings, ScheduleItem } from "../types";
 import { SAMPLE_BACKGROUNDS } from "../data/easyworshipData";
-import { IMAGE_TYPES, MEDIA_LIMITS, StoredImage, deleteImage, imageBackground, listImages, readImageFile, saveImage } from "../lib/mediaStore";
+import { IMAGE_TYPES, VIDEO_TYPES, MEDIA_LIMITS, MediaItem, addImageFile, addVideoFile, backgroundCss, deleteMedia, listMedia, watchMedia } from "../lib/mediaStore";
+import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
 export const DEFAULT_BG_SETTINGS: BackgroundSettings = { dim: 0, fit: "cover", blur: 0 };
 
 interface Props {
   searchQuery: string;
   item?: ScheduleItem;
-  /** css = new background of the selected item (null = remove it). */
-  onApply: (css: string | null) => void;
+  /** css = new background of the selected item (null = remove it); mediaId = the upload it came from. */
+  onApply: (css: string | null, mediaId?: string) => void;
   onSettings: (next: BackgroundSettings) => void;
 }
 
 export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSettings }) => {
-  const [images, setImages] = useState<StoredImage[]>([]);
+  const [images, setImages] = useState<MediaItem[]>([]);
   const [persistent, setPersistent] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
@@ -30,47 +32,69 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = async () => {
-    const r = await listImages();
-    setImages(r.images);
+    const r = await listMedia();
+    setImages(r.items);
     setPersistent(r.persistent);
   };
   useEffect(() => {
     refresh();
+    void autoStartCouchSync();
+    return watchMedia(() => void refresh()); // e.g. uploads pulled from CouchDB
   }, []);
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    const room = MEDIA_LIMITS.MAX_IMAGES - images.length;
-    if (room <= 0) return setNotice({ text: `Puno na (max ${MEDIA_LIMITS.MAX_IMAGES} larawan). Mag-delete muna.`, tone: "warn" });
+    const isVideo = (f: File) => f.type.startsWith("video/") || /\.(mp4|webm)$/i.test(f.name);
+    let roomImg = MEDIA_LIMITS.MAX_IMAGES - images.filter((m) => m.kind === "image").length;
+    let roomVid = MEDIA_LIMITS.MAX_VIDEOS - images.filter((m) => m.kind === "video").length;
     const errors: string[] = [];
     let added = 0;
-    let memOnly = false;
-    for (const [i, f] of files.slice(0, room).entries()) {
-      setBusy(`Pinoproseso ${i + 1}/${Math.min(files.length, room)}…`);
+    let skippedImg = 0;
+    let skippedVid = 0;
+    for (const [i, f] of files.entries()) {
+      const video = isVideo(f);
+      if (video ? roomVid <= 0 : roomImg <= 0) {
+        if (video) skippedVid++;
+        else skippedImg++;
+        continue;
+      }
+      setBusy(`Pinoproseso ${i + 1}/${files.length}${video ? " (video — sandali lang)" : ""}…`);
       try {
-        const img = await readImageFile(f);
-        if (!(await saveImage(img))) memOnly = true;
+        await (video ? addVideoFile(f) : addImageFile(f));
+        if (video) roomVid--;
+        else roomImg--;
         added++;
       } catch (err: any) {
         errors.push(err?.message || `"${f.name}": hindi nabasa.`);
       }
     }
-    if (files.length > room) errors.push(`${files.length - room} larawan ang hindi naidagdag (max ${MEDIA_LIMITS.MAX_IMAGES}).`);
+    if (skippedImg) errors.push(`${skippedImg} larawan ang hindi naidagdag (max ${MEDIA_LIMITS.MAX_IMAGES}). Mag-delete muna.`);
+    if (skippedVid) errors.push(`${skippedVid} video ang hindi naidagdag (max ${MEDIA_LIMITS.MAX_VIDEOS}). Mag-delete muna.`);
     setBusy(null);
     await refresh();
-    setNotice(
-      errors.length
-        ? { text: `${added ? `${added} naidagdag. ` : ""}${errors.join(" ")}`, tone: "warn" }
-        : { text: `${added} larawan ang naidagdag.${memOnly ? " (Hindi ma-save sa browser — mawawala pagka-reload.)" : ""}`, tone: memOnly ? "warn" : "ok" },
-    );
+    setNotice(errors.length ? { text: `${added ? `${added} naidagdag. ` : ""}${errors.join(" ")}`, tone: "warn" } : { text: `${added} ang naidagdag.`, tone: "ok" });
   };
 
   const handleDelete = async (id: string) => {
-    await deleteImage(id);
+    try {
+      await deleteMedia(id);
+    } catch {
+      setNotice({ text: "Hindi ma-delete. Subukan ulit.", tone: "warn" });
+    }
     setConfirmDelete(null);
     await refresh();
+  };
+
+  // 2026-11-05: the picture / poster is read from the database only when it is used.
+  const handleUse = async (m: MediaItem) => {
+    if (!item) return;
+    setBusy("Inilalagay ang background…");
+    const css = await backgroundCss(m.id);
+    setBusy(null);
+    if (!css) return setNotice({ text: `Hindi pa buo ang "${m.name}" sa browser na ito (nagsi-sync pa?). Subukan ulit mamaya.`, tone: "warn" });
+    onApply(css, m.id);
   };
 
   const q = searchQuery.trim().toLowerCase();
@@ -87,10 +111,10 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => inputRef.current?.click()} disabled={!!busy} className="btn btn-primary tap-target">
           <ImagePlus className="h-3.5 w-3.5" />
-          Upload images
+          Upload images / video
         </button>
-        <span className="text-xs text-fg-subtle">JPG, PNG, WebP · pinaliliit sa 1920px</span>
-        <input ref={inputRef} type="file" multiple accept={IMAGE_TYPES.join(",")} className="hidden" onChange={handleFiles} data-testid="media-input" />
+        <span className="text-xs text-fg-subtle">JPG, PNG, WebP · MP4, WebM (max 200 MB)</span>
+        <input ref={inputRef} type="file" multiple accept={[...IMAGE_TYPES, ...VIDEO_TYPES, ".mp4", ".webm"].join(",")} className="hidden" onChange={handleFiles} data-testid="media-input" />
       </div>
       {busy && (
         <p role="status" className="notice-info flex items-center gap-1.5 text-xs">
@@ -106,9 +130,10 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
       {!persistent && (
         <p className="notice-warn flex gap-1.5 text-xs">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          Hindi makapag-save sa browser na ito (private mode?). Mawawala ang mga larawan pagka-reload.
+          Hindi makapag-save sa browser na ito (private mode?). Hindi magagamit ang mga upload.
         </p>
       )}
+      <CouchSyncPanel />
 
       {/* target item + settings */}
       <div className="space-y-2.5 rounded-lg border border-line bg-surface-2 p-2.5" aria-label="Background ng item">
@@ -154,27 +179,33 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
         </div>
         {images.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line-strong p-3 text-xs text-fg-subtle">
-            Wala pang larawan. Pindutin ang <strong>Upload images</strong>. Naka-save lang ito sa browser na ito.
+            Wala pang larawan o video. Pindutin ang <strong>Upload images / video</strong>. Naka-save sa browser na ito, at sa CouchDB kapag naka-login.
           </p>
         ) : shownImages.length === 0 ? (
           <p className="p-1 text-xs text-fg-subtle">Walang tugma sa "{searchQuery}".</p>
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {shownImages.map((m) => {
-              const css = imageBackground(m);
-              const selected = current === css;
+              const selected = !!item?.bgMediaId && item.bgMediaId === m.id && !!current;
               return (
                 <div key={m.id} className={`group relative overflow-hidden rounded-lg border bg-surface-2 ${selected ? "border-accent ring-1 ring-accent" : "border-line"}`}>
                   <button
-                    onClick={() => item && onApply(css)}
+                    onClick={() => void handleUse(m)}
                     disabled={!item}
                     className="block w-full text-left disabled:cursor-not-allowed"
                     title={item ? `Gawing background ng "${itemName}"` : "Pumili muna ng item sa Schedule"}
-                    aria-label={`Background: ${m.name}`}
+                    aria-label={`Background: ${m.name}${m.kind === "video" ? " (video)" : ""}`}
                     aria-pressed={selected}
+                    data-media-kind={m.kind}
                   >
                     <div className="relative aspect-video overflow-hidden bg-black">
-                      <img src={m.thumb} alt="" className="h-full w-full object-cover" draggable={false} />
+                      {m.thumbUrl ? <img src={m.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <div className="grid h-full place-items-center text-xs text-zinc-500">nagsi-sync…</div>}
+                      {m.kind === "video" && (
+                        <span className="absolute bottom-1 left-1 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 py-0.5 font-mono text-[11px] text-white">
+                          <Play className="h-2.5 w-2.5 fill-current" />
+                          {formatDuration(m.duration)}
+                        </span>
+                      )}
                       {selected && (
                         <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white">
                           <Check className="h-3 w-3" />
@@ -236,3 +267,9 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
     </div>
   );
 };
+
+/** 75 → "1:15" */
+function formatDuration(sec?: number): string {
+  const n = Math.max(0, Math.round(sec || 0));
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+}

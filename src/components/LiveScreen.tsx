@@ -2,6 +2,7 @@
  * 2026-10-28 (Jarvis): the LIVE main screen — shared by the Simulator's Live monitor and the
  * projector output window (?output=main), so both always look the same.
  *  - Crossfade (~300 ms) when the slide / Black / Logo / Clear changes.
+ *  - 2026-11-05: background and text fade separately, so a video background never restarts.
  *  - `operator` = small hints for the person running it (BLACK · Ctrl+B, "Select an item…");
  *    never shown on the projector.
  */
@@ -10,45 +11,52 @@ import { AlertTriangle } from "lucide-react";
 import type { LiveState, ResolvedTextStyle, BackgroundSettings } from "../types";
 import { SlideScreen } from "./SlideScreen";
 
-interface Frame {
+// 2026-11-05 (Mira): the screen is two crossfading layers — background (picture / video / dim) and
+// content (text / picture slide / logo). Changing slides fades only the content, so a video
+// background keeps playing instead of starting over on every slide.
+interface BgFrame {
+  background: string;
+  bgSettings?: BackgroundSettings;
+  videoId?: string;
+}
+interface ContentFrame {
   mode: "black" | "logo" | "slide";
   text: string;
   image?: string;
   textColor?: string;
-  background?: string;
   hideContent: boolean;
   style?: ResolvedTextStyle;
-  bgSettings?: BackgroundSettings;
 }
 
-function toFrame(s: LiveState): Frame {
+function toFrames(s: LiveState, playVideo: boolean): { bg: BgFrame; content: ContentFrame } {
   const mode = s.isBlackout ? "black" : s.isLogo ? "logo" : "slide";
   return {
-    mode,
-    text: s.currentSlideText || "",
-    image: s.currentSlideImage,
-    textColor: s.currentSlideTextColor,
-    background: mode === "black" ? "#000" : mode === "logo" ? "#0b1020" : s.backgroundMediaUrl || "#0f172a",
-    hideContent: s.isClearText,
-    style: s.textStyle,
-    bgSettings: mode === "slide" ? s.backgroundSettings : undefined,
+    bg: {
+      background: mode === "black" ? "#000" : mode === "logo" ? "#0b1020" : s.backgroundMediaUrl || "#0f172a",
+      bgSettings: mode === "slide" ? s.backgroundSettings : undefined,
+      videoId: mode === "slide" && playVideo ? s.backgroundVideoId : undefined,
+    },
+    content: { mode, text: s.currentSlideText || "", image: s.currentSlideImage, textColor: s.currentSlideTextColor, hideContent: s.isClearText, style: s.textStyle },
   };
 }
 
-/** Cheap identity for a frame (images are long data: URLs — use length + tail). */
-function frameKey(f: Frame) {
-  const img = f.image ? `${f.image.length}:${f.image.slice(-48)}` : "";
-  return [f.mode, f.text, img, f.textColor || "", f.background || "", f.hideContent ? 1 : 0, JSON.stringify(f.style ?? null), JSON.stringify(f.bgSettings ?? null)].join("|");
-}
+/** Cheap identity (pictures are long data: URLs — use length + tail). */
+const tail = (v?: string) => (v ? `${v.length}:${v.slice(-48)}` : "");
+// Dim / fit / blur are not in the key: changing them applies at once (no fade), so a video never restarts.
+const bgKey = (f: BgFrame) => [tail(f.background), f.videoId || ""].join("|");
+const contentKey = (f: ContentFrame) => [f.mode, f.text, tail(f.image), f.textColor || "", f.hideContent ? 1 : 0, JSON.stringify(f.style ?? null)].join("|");
 
-const FrameView: React.FC<{ frame: Frame; textScale: number }> = ({ frame, textScale }) => (
+const BgView: React.FC<{ frame: BgFrame }> = ({ frame }) => (
+  <SlideScreen slide={null} background={frame.background} bgSettings={frame.bgSettings} bgVideoId={frame.videoId} layer="bg" />
+);
+
+const ContentView: React.FC<{ frame: ContentFrame; textScale: number }> = ({ frame, textScale }) => (
   <SlideScreen
     slide={frame.mode === "slide" ? { text: frame.text, image: frame.image, textColor: frame.textColor } : null}
-    background={frame.background}
     hideContent={frame.hideContent}
     textScale={textScale}
     textStyle={frame.style}
-    bgSettings={frame.bgSettings}
+    layer="content"
   >
     {frame.mode === "logo" && (
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -60,20 +68,10 @@ const FrameView: React.FC<{ frame: Frame; textScale: number }> = ({ frame, textS
   </SlideScreen>
 );
 
-interface LiveMainScreenProps {
-  liveState: LiveState;
-  /** Simulator only: small operator hints (never on the projector). */
-  operator?: boolean;
-  fade?: boolean;
-  textScale?: number;
-}
-
-export const LiveMainScreen: React.FC<LiveMainScreenProps> = ({ liveState, operator = false, fade = true, textScale = 3.9 }) => {
-  const frame = toFrame(liveState);
-  const key = frameKey(frame);
+/** Keeps the last frame + the new one while the new one fades in (~320 ms). */
+function useCrossfade<F>(key: string, frame: F, fade: boolean) {
   const nextId = useRef(1);
-  const [layers, setLayers] = useState<{ id: number; key: string; frame: Frame }[]>([{ id: 0, key, frame }]);
-
+  const [layers, setLayers] = useState<{ id: number; key: string; frame: F }[]>([{ id: 0, key, frame }]);
   useEffect(() => {
     setLayers((prev) => {
       const top = prev[prev.length - 1];
@@ -83,18 +81,49 @@ export const LiveMainScreen: React.FC<LiveMainScreenProps> = ({ liveState, opera
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, fade]);
+  const done = () => setLayers((prev) => prev.slice(-1));
+  return { layers, done };
+}
+
+/**
+ * 2026-11-05 (Mira): base text size of the Live / projector screen, in % of screen width — the same
+ * as the Preview (6), so what you see in Preview is what goes on the projector. It was 3.9, so the
+ * projector text was ~35% smaller than the Preview. Auto-fit still shrinks long verses to fit.
+ */
+export const LIVE_TEXT_SCALE = 6;
+
+interface LiveMainScreenProps {
+  liveState: LiveState;
+  /** Simulator only: small operator hints (never on the projector). */
+  operator?: boolean;
+  fade?: boolean;
+  textScale?: number;
+  /** 2026-11-05: false = show a video background's poster only (small copies of the screen). */
+  playVideo?: boolean;
+}
+
+export const LiveMainScreen: React.FC<LiveMainScreenProps> = ({ liveState, operator = false, fade = true, textScale = LIVE_TEXT_SCALE, playVideo = true }) => {
+  const { bg: bgFrame, content: frame } = toFrames(liveState, playVideo);
+  const bg = useCrossfade(bgKey(bgFrame), bgFrame, fade);
+  const content = useCrossfade(contentKey(frame), frame, fade);
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden bg-black [container-type:inline-size]">
-      {layers.map((l, i) => {
-        const isNew = i === layers.length - 1 && layers.length > 1;
+    <div className="relative aspect-video w-full overflow-hidden bg-black [container-type:inline-size]" data-testid="live-main">
+      {bg.layers.map((l, i) => {
+        const isNew = i === bg.layers.length - 1 && bg.layers.length > 1;
         return (
-          <div
-            key={l.id}
-            className={`absolute inset-0 ${isNew ? "animate-[wtp-fade_320ms_ease-out_both]" : ""}`}
-            onAnimationEnd={isNew ? () => setLayers((prev) => prev.slice(-1)) : undefined}
-          >
-            <FrameView frame={l.frame} textScale={textScale} />
+          <div key={`bg-${l.id}`} className={`absolute inset-0 ${isNew ? "animate-[wtp-fade_320ms_ease-out_both]" : ""}`} onAnimationEnd={isNew ? bg.done : undefined}>
+            <BgView frame={i === bg.layers.length - 1 ? { ...l.frame, bgSettings: bgFrame.bgSettings } : l.frame} />
+          </div>
+        );
+      })}
+      {content.layers.map((l, i) => {
+        const fading = content.layers.length > 1;
+        const isNew = i === content.layers.length - 1 && fading;
+        const anim = !fading ? "" : isNew ? "animate-[wtp-fade_320ms_ease-out_both]" : "animate-[wtp-fade-out_320ms_ease-out_both]";
+        return (
+          <div key={`c-${l.id}`} className={`absolute inset-0 ${anim}`} onAnimationEnd={isNew ? content.done : undefined}>
+            <ContentView frame={l.frame} textScale={textScale} />
           </div>
         );
       })}

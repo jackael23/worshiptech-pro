@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2, Maximize } from "lucide-react";
 import type { LiveState } from "../types";
-import { LiveMainScreen } from "./LiveScreen";
+import { LiveMainScreen, LIVE_TEXT_SCALE } from "./LiveScreen";
 import { openLiveChannel, isForwardedKey, LiveMessage, OUTPUT_PING_MS } from "../lib/liveChannel";
 
 export const OutputWindow: React.FC = () => {
@@ -113,7 +113,7 @@ export const OutputWindow: React.FC = () => {
       {/* 16:9 box that fits the window (letterboxed) */}
       <div style={{ width: "min(100vw, calc(100vh * 16 / 9))" }}>
         {state ? (
-          <LiveMainScreen liveState={state} textScale={3.9} />
+          <LiveMainScreen liveState={state} textScale={LIVE_TEXT_SCALE} />
         ) : (
           <div className="grid aspect-video w-full place-items-center bg-black text-sm text-zinc-500">
             Naghihintay sa WorshipTech-Pro… Buksan ang Simulator sa kabilang window.

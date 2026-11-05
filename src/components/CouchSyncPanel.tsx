@@ -1,6 +1,7 @@
 /**
  * 2026-11-03 (Jarvis): CouchDB sync settings for My Songs (shown in the Songs tab).
  * 2026-11-03b: one login syncs Songs, Bibles and PPT (3 databases); also shown in the Bible/PPT tabs.
+ * 2026-11-05: + Media (background pictures/videos, 4th database); also shown in the Media tab.
  * Login uses CouchDB's session cookie; the password is never stored by the app.
  */
 import React, { useEffect, useState } from "react";
@@ -38,7 +39,7 @@ const STATE_DOT: Record<SyncStatus["state"], string> = {
   error: "bg-live",
 };
 
-/** Starts sync on app load when it was left on (called by the Songs/Bible/PPT tabs; runs once). */
+/** Starts sync on app load when it was left on (called by the Songs/Bible/PPT/Media tabs; runs once). */
 let autoStart: Promise<void> | null = null;
 export function autoStartCouchSync(): Promise<void> {
   autoStart ??= doAutoStart();
@@ -101,7 +102,7 @@ export const CouchSyncPanel: React.FC = () => {
     setSettings(next);
     saveCouchSettings(next);
     setUser(null);
-    setMsg("Naka-off ang sync. Naka-save pa rin sa browser na ito ang mga kanta, Bible at PPT.");
+    setMsg("Naka-off ang sync. Naka-save pa rin sa browser na ito ang mga kanta, Bible, PPT at media.");
   };
 
   const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : null;
@@ -126,13 +127,13 @@ export const CouchSyncPanel: React.FC = () => {
       {open && (
         <div className="mt-1.5 p-2.5 rounded-lg border border-line bg-surface-2 space-y-2" data-testid="couch-panel">
           <div className="flex items-center justify-between">
-            <strong className="text-fg">CouchDB sync (Songs, Bible, PPT)</strong>
+            <strong className="text-fg">CouchDB sync (Songs, Bible, PPT, Media)</strong>
             <button type="button" onClick={() => setOpen(false)} className="tap-target p-1 text-fg-subtle hover:text-fg" aria-label="Isara">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
           <p className="text-fg-subtle">
-            Laging naka-save muna sa browser na ito ang kanta, Bible at PPT; kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
+            Laging naka-save muna sa browser na ito ang kanta, Bible, PPT at media (larawan/video); kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
           </p>
           <label className="block">
             <span className="text-fg-muted">CouchDB URL</span>
@@ -150,6 +151,10 @@ export const CouchSyncPanel: React.FC = () => {
             <label className="block">
               <span className="text-fg-muted">PPT</span>
               <input className={inputCls} value={settings.pptDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, pptDbName: e.target.value.trim() })} placeholder="wtp_presentations" />
+            </label>
+            <label className="col-span-2 block">
+              <span className="text-fg-muted">Media (larawan + video)</span>
+              <input className={inputCls} value={settings.mediaDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, mediaDbName: e.target.value.trim() })} placeholder="wtp_media" />
             </label>
           </div>
           {!settings.enabled || shownState === "login" ? (

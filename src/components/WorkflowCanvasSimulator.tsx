@@ -32,6 +32,7 @@ import {
   EasyWorshipVersion,
   TextStyle,
   BackgroundSettings,
+  SlideContent,
 } from "../types";
 import { INITIAL_SCHEDULE } from "../data/easyworshipData";
 import { getCachedSchedule, loadSchedule, saveSchedule, loadSelectedIndex, saveSelectedIndex } from "../lib/scheduleStore";
@@ -46,6 +47,11 @@ import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary } from "./MediaLibrary";
+import { isVideoId } from "../lib/mediaStore";
+
+/** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
+const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
+  item && !slide?.background && item.background && isVideoId(item.bgMediaId) ? item.bgMediaId : undefined;
 
 interface WorkflowCanvasSimulatorProps {
   version: EasyWorshipVersion;
@@ -170,12 +176,14 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       if (!onAir) return prev;
       const slide = onAir.slides[prev.activeSlideIndex];
       const bg = slide?.background || onAir.background || "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)";
-      if (bg === prev.backgroundMediaUrl && JSON.stringify(onAir.bgSettings ?? null) === JSON.stringify(prev.backgroundSettings ?? null)) return prev;
-      return { ...prev, backgroundMediaUrl: bg, backgroundSettings: onAir.bgSettings };
+      const video = videoOf(onAir, slide);
+      if (bg === prev.backgroundMediaUrl && video === prev.backgroundVideoId && JSON.stringify(onAir.bgSettings ?? null) === JSON.stringify(prev.backgroundSettings ?? null)) return prev;
+      return { ...prev, backgroundMediaUrl: bg, backgroundVideoId: video, backgroundSettings: onAir.bgSettings };
     });
   };
-  const handleItemBackground = (itemId: string, css: string | null) => {
-    const items = scheduleItems.map((i) => (i.id === itemId ? { ...i, background: css || undefined } : i));
+  const handleItemBackground = (itemId: string, css: string | null, mediaId?: string) => {
+    // 2026-11-05: bgMediaId = which upload (a "vid-…" id makes it a video background)
+    const items = scheduleItems.map((i) => (i.id === itemId ? { ...i, background: css || undefined, bgMediaId: (css && mediaId) || undefined } : i));
     setScheduleItems(items);
     refreshLiveBackground(items);
   };
@@ -229,6 +237,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       currentSlideNotes: slide.notes,
       textStyle: styleFor(item),
       backgroundSettings: item.bgSettings,
+      backgroundVideoId: videoOf(item, slide),
     }));
   };
 
@@ -472,20 +481,27 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         <div className="flex min-w-0 items-center gap-2.5">
           <Layers className="h-4 w-4 shrink-0 text-accent" />
           <h2 className="text-sm font-semibold text-fg">Simulator</h2>
-          {outputCount > 0 ? (
+          {outputCount > 0 && (
             <span
               className="badge border-transparent bg-ok-soft text-fg"
-              title="May nakakonektang output window. Practice/backup tool pa rin ito — hindi kapalit ng EasyWorship sa totoong service."
+              title="May nakakonektang output window."
             >
               <span className="h-1.5 w-1.5 rounded-full bg-ok" />
               Output connected{outputCount > 1 ? ` (${outputCount})` : ""}
             </span>
-          ) : (
-            <span className="badge badge-warn" title="Pang-practice. Para ilabas sa projector: Output → Open output window.">
-              Practice mode
-            </span>
           )}
-          {remote.phones > 0 && (
+          {remote.availability === "ready" && !remote.active && (
+            <button
+              onClick={() => remote.takeOver()}
+              className="badge border-transparent bg-warn-soft text-fg"
+              title="May ibang Simulator tab na sinusunod ng phone. I-click para dito na sumunod ang phone."
+              data-testid="remote-takeover"
+            >
+              <Smartphone className="h-3 w-3" />
+              Phone: ibang tab · Gamitin dito
+            </button>
+          )}
+          {remote.active && remote.phones > 0 && (
             <span className="badge border-transparent bg-ok-soft text-fg" title="May nakakonektang phone remote">
               <Smartphone className="h-3 w-3" />
               Phone{remote.phones > 1 ? ` (${remote.phones})` : ""}
@@ -601,7 +617,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               <MediaLibrary
                 searchQuery={searchQuery}
                 item={currentScheduleItem}
-                onApply={(css) => currentScheduleItem && handleItemBackground(currentScheduleItem.id, css)}
+                onApply={(css, mediaId) => currentScheduleItem && handleItemBackground(currentScheduleItem.id, css, mediaId)}
                 onSettings={(next) => currentScheduleItem && handleItemBgSettings(currentScheduleItem.id, next)}
               />
             )}
@@ -806,7 +822,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   {currentPreviewSlide?.label && <span className="truncate text-fg-subtle">· {currentPreviewSlide.label}</span>}
                 </div>
                 <div className="max-w-[60%] overflow-hidden rounded-md ring-1 ring-accent/50 @[40rem]/out:max-w-none" data-testid="preview-screen">
-                  <SlideScreen slide={currentPreviewSlide} background={currentScheduleItem?.background} textScale={6} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem?.bgSettings} ariaHidden />
+                  <SlideScreen slide={currentPreviewSlide} background={currentScheduleItem?.background} textScale={6} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem?.bgSettings} bgVideoId={videoOf(currentScheduleItem, currentPreviewSlide)} ariaHidden />
                 </div>
               </div>
               <div className="order-1 @[40rem]/out:order-2">
@@ -956,6 +972,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                         {remote.phones ? `Phone connected${remote.phones > 1 ? ` (${remote.phones})` : ""}` : "No phone"}
                       </p>
 
+                      {remote.availability === "ready" && !remote.active && (
+                        <div role="status" className="notice-warn space-y-1.5">
+                          <p>Ibang Simulator tab ang sinusunod ng phone ngayon, kaya iba ang schedule na nakikita roon.</p>
+                          <button onClick={() => remote.takeOver()} className="btn btn-sm">Gamitin ang tab na ito</button>
+                        </div>
+                      )}
                       {remote.availability === "ready" ? (
                         <div className="space-y-2.5">
                           <div className="flex items-end justify-between gap-2">
@@ -1007,7 +1029,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     {/* small copy of the Live screen, so changes are visible while the big one is scrolled away */}
                     <div className="flex items-center gap-3">
                       <div className="w-40 shrink-0 overflow-hidden rounded ring-1 ring-live/50" data-testid="style-live-mini">
-                        <LiveMainScreen liveState={liveState} fade={false} />
+                        <LiveMainScreen liveState={liveState} fade={false} playVideo={false} />
                       </div>
                       <p className="text-xs text-fg-subtle">Live ngayon — dito mo makikita agad ang binabago mo.</p>
                     </div>

@@ -243,6 +243,15 @@
     opacity: 1;
   }
 }
+/* 2026-11-05 (Mira): the old text fades out while the new one fades in (text layer is transparent over a video) */
+@keyframes wtp-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

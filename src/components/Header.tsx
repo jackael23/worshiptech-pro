@@ -72,7 +72,6 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
               >
                 <Icon className={`h-4 w-4 ${active ? "text-accent" : ""}`} />
                 {label}
-                {id === "chat" && <span className="badge badge-accent px-1 py-0 leading-4">AI</span>}
               </button>
             );
           })}

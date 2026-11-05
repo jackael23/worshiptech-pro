@@ -59,6 +59,8 @@ function cleanItems(v: unknown): ScheduleItem[] | null {
       activeSlideIndex: Math.min(Math.max(0, Number(o.activeSlideIndex) || 0), slides.length - 1),
       background: str(o.background, 40_000_000),
       notes: str(o.notes, 20_000),
+      // 2026-11-05: id of the Media-tab picture / video used as background
+      bgMediaId: typeof o.bgMediaId === "string" && /^(img|vid)-[\w-]{1,70}$/.test(o.bgMediaId) ? o.bgMediaId : undefined,
     };
     out.push(item);
   }

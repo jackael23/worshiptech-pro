@@ -61,7 +61,7 @@ export interface SlideContent {
 /** 2026-10-29 (Jarvis): how slide text looks on the screens (see lib/textStyle.ts). */
 export interface TextStyle {
   fontFamily: string;
-  /** Size: 0.5–1.5 × the auto-fit size (text still shrinks when it doesn't fit). */
+  /** Size: 0.5–2 × the auto-fit size (text still shrinks when it doesn't fit). 2026-11-05: max was 1.5. */
   scale: number;
   bold: boolean;
   italic: boolean;
@@ -100,6 +100,12 @@ export interface ScheduleItem {
   textStyle?: TextStyle | null;
   /** 2026-10-29: dim / fit / blur of this item's background. */
   bgSettings?: BackgroundSettings;
+  /**
+   * 2026-11-05: id of the Media-tab upload used as background ("img-…" picture or "vid-…" video).
+   * For a video, `background` holds its poster picture (thumbnails, phone remote, fallback)
+   * and the video itself is played from this browser's media database.
+   */
+  bgMediaId?: string;
 }
 
 export interface LiveState {
@@ -121,6 +127,8 @@ export interface LiveState {
   textStyle?: ResolvedTextStyle;
   /** 2026-10-29: dim / fit / blur of the background on air. */
   backgroundSettings?: BackgroundSettings;
+  /** 2026-11-05: video background on air ("vid-…" media id); backgroundMediaUrl = its poster. */
+  backgroundVideoId?: string;
   ndiActive: boolean;
   foldbackEnabled: boolean;
   nurseryAlertText: string;

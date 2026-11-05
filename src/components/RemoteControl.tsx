@@ -2,13 +2,15 @@
  * 2026-10-29 (Jarvis): Phone remote (opened at /?remote on a phone on the same WiFi).
  *  - PIN login (PIN is shown on the laptop: Simulator → Output → Phone remote).
  *  - Live: current + next slide, Prev / Next, GO LIVE (laptop preview), Black / Clear / Logo.
+ *    2026-11-05 (Mira): + "Prev song / Next song" — first slide of the item before / after the one
+ *    on air, without going to the Schedule tab (separate buttons, so Next never jumps songs by accident).
  *  - Schedule: tap = select (laptop preview follows), ▶ or double-tap = LIVE.
  *  - Notes: big text for the preacher / worship leader (notes, current, next).
  *  - Alert: send / hide the message ticker.
  * Talks to the local server (remoteServer.ts) — Server-Sent Events in, small POSTs out.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Play, ListOrdered, MonitorPlay, StickyNote, AlertTriangle, LogOut, Image as ImageIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, ListOrdered, MonitorPlay, StickyNote, AlertTriangle, LogOut, Image as ImageIcon } from "lucide-react";
 import { LiveMainScreen } from "./LiveScreen";
 import { SlideScreen } from "./SlideScreen";
 import type { RemoteCmd, RemoteSnapshot } from "../lib/remoteLink";
@@ -288,6 +290,11 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
   const selItem = snap.schedule.find((i) => i.id === snap.selected.itemId);
   const selSlide = selItem?.slides[snap.selected.slide];
   const state = live.isBlackout ? "Black" : live.isLogo ? "Logo" : live.isClearText ? "Text off" : live.isLive ? "On air" : "Standby";
+  // 2026-11-05: song before / after the item on air (or the laptop's selected item when nothing is on air)
+  const baseIdx = snap.schedule.findIndex((i) => i.id === (live.activeScheduleItemId || snap.selected.itemId));
+  const prevSong = baseIdx > 0 ? snap.schedule[baseIdx - 1] : undefined;
+  const nextSong = baseIdx >= 0 ? snap.schedule[baseIdx + 1] : snap.schedule[0];
+  const goSong = (item?: { id: string; slides: unknown[] }) => item && item.slides.length > 0 && cmd({ type: "live", itemId: item.id, slide: 0 });
   return (
     <div className="mx-auto max-w-xl space-y-3 p-3">
       <div>
@@ -300,7 +307,7 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
           </span>
         </div>
         <div className="overflow-hidden rounded-lg ring-1 ring-live/60" data-testid="remote-live">
-          <LiveMainScreen liveState={live} operator fade={false} />
+          <LiveMainScreen liveState={live} operator fade={false} playVideo={false} />
         </div>
       </div>
 
@@ -321,6 +328,36 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
         </button>
         <button disabled={disabled} onClick={() => cmd({ type: "next" })} className="btn btn-primary h-20 rounded-xl text-base" aria-label="Next slide">
           Next <ChevronRight className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* 2026-11-05: change song from here (first slide of the item before / after) */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          disabled={disabled || !prevSong}
+          onClick={() => goSong(prevSong)}
+          className="btn btn-secondary h-14 min-w-0 justify-start rounded-xl px-3 text-left"
+          aria-label={prevSong ? `Prev song: ${prevSong.title}` : "Prev song (wala na)"}
+          data-testid="remote-prev-song"
+        >
+          <ChevronsLeft className="h-5 w-5 shrink-0" />
+          <span className="min-w-0">
+            <span className="block text-xs text-fg-muted">Prev song</span>
+            <span className="block truncate text-sm">{prevSong ? prevSong.title : "—"}</span>
+          </span>
+        </button>
+        <button
+          disabled={disabled || !nextSong}
+          onClick={() => goSong(nextSong)}
+          className="btn btn-secondary h-14 min-w-0 justify-end rounded-xl px-3 text-right"
+          aria-label={nextSong ? `Next song: ${nextSong.title}` : "Next song (wala na)"}
+          data-testid="remote-next-song"
+        >
+          <span className="min-w-0">
+            <span className="block text-xs text-fg-muted">Next song</span>
+            <span className="block truncate text-sm">{nextSong ? nextSong.title : "—"}</span>
+          </span>
+          <ChevronsRight className="h-5 w-5 shrink-0" />
         </button>
       </div>
 

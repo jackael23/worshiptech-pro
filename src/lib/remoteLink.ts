@@ -89,8 +89,12 @@ export interface RemoteHost {
   pin: string;
   urls: string[];
   phones: number;
+  /** false = another Simulator tab on this laptop is the one the phones follow. */
+  active: boolean;
   publish: (snap: RemoteSnapshot) => void;
   newPin: () => Promise<void>;
+  /** Makes this tab the one the phones follow. */
+  takeOver: () => Promise<void>;
 }
 
 /**
@@ -102,6 +106,9 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
   const [pin, setPin] = useState("");
   const [urls, setUrls] = useState<string[]>([]);
   const [phones, setPhones] = useState(0);
+  const [active, setActive] = useState(true);
+  const activeRef = useRef(false); // false until the server says this tab is in charge
+  const hostIdRef = useRef("");
   const onCmdRef = useRef(onCmd);
   onCmdRef.current = onCmd;
   const resendRef = useRef<() => void>(() => {});
@@ -124,6 +131,7 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
         es = new EventSource("/api/remote/host-events");
         // (re)connected — e.g. after the server restarted: new PIN, and phones need the screen again
         es.onopen = () => {
+          activeRef.current = false; // wait for the server's "role" message (new host id)
           fetch("/api/remote/info", { cache: "no-store" })
             .then((x) => (x.ok ? x.json() : null))
             .then((k) => {
@@ -139,6 +147,13 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
             const m = JSON.parse(e.data);
             if (m?.type === "cmd" && m.cmd) onCmdRef.current(m.cmd as RemoteCmd);
             else if (m?.type === "remotes") setPhones(Number(m.count) || 0);
+            else if (m?.type === "role") {
+              hostIdRef.current = String(m.hostId || "");
+              const was = activeRef.current;
+              activeRef.current = m.active === true;
+              setActive(activeRef.current);
+              if (activeRef.current && !was) resendRef.current(); // phones need this tab's schedule
+            }
           } catch {
             /* ignore bad message */
           }
@@ -164,12 +179,14 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(async () => {
         const s = pending.current;
-        if (!s) return;
+        if (!s || !activeRef.current) return; // another tab is in charge
         const my = ++seq.current;
         const live = {
           ...s.live,
           currentSlideImage: await shrinkPictures(s.live.currentSlideImage),
           backgroundMediaUrl: await shrinkPictures(s.live.backgroundMediaUrl),
+          // 2026-11-05: the phone shows the video's poster (backgroundMediaUrl) — the video stays on the laptop
+          backgroundVideoId: undefined,
         };
         const next = s.next
           ? { ...s.next, image: await shrinkPictures(s.next.image), background: await shrinkPictures(s.next.background) }
@@ -177,7 +194,7 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
         if (my !== seq.current) return; // a newer snapshot is on its way
         fetch("/api/remote/host-state", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Host-Id": hostIdRef.current },
           body: JSON.stringify({ ...s, live, next }),
         }).catch(() => {});
       }, 120);
@@ -199,5 +216,13 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
     }
   }, []);
 
-  return { availability, pin, urls, phones, publish, newPin };
+  const takeOver = useCallback(async () => {
+    try {
+      await fetch("/api/remote/take-over", { method: "POST", headers: { "X-Host-Id": hostIdRef.current } });
+    } catch {
+      /* server gone */
+    }
+  }, []);
+
+  return { availability, pin, urls, phones, active, publish, newPin, takeOver };
 }
