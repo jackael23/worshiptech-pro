@@ -48,8 +48,9 @@
   --c-surface: #ffffff;
   --c-surface-2: #fafafa;
   --c-surface-3: #f4f4f5;
-  --c-line: #e4e4e7;
-  --c-line-strong: #d4d4d8;
+  /* 2026-11-06: borders a step stronger (were #e4e4e7 / #d4d4d8 ≈ 1.27:1) — cards stay apart on dim / cheap screens */
+  --c-line: #d4d4d8;
+  --c-line-strong: #c2c2c9;
   --c-fg: #09090b;
   --c-fg-muted: #52525b;
   /* 2026-10-29: was #71717a (4.4:1 on canvas, below WCAG AA) → ~5.5:1 */
@@ -76,8 +77,9 @@
   --c-surface: #111113;
   --c-surface-2: #17171a;
   --c-surface-3: #1f1f23;
-  --c-line: #26262b;
-  --c-line-strong: #3a3a41;
+  /* 2026-11-06: borders a step stronger (were #26262b / #3a3a41 ≈ 1.25:1) — cards stay apart in a dark booth */
+  --c-line: #34343b;
+  --c-line-strong: #4a4a53;
   --c-fg: #fafafa;
   /* 2026-10-29: hint text was hard to read on the projector-room screen — subtle 5.6:1 → 7:1, muted raised too to keep the hierarchy */
   --c-fg-muted: #b4b4bd;

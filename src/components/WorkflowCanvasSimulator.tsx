@@ -51,6 +51,8 @@ import { MediaLibrary } from "./MediaLibrary";
 import { isVideoId } from "../lib/mediaStore";
 import { useLogoFrame, withLogo } from "../lib/logoStore";
 import { LogoSettingsModal } from "./LogoSettingsModal";
+import { usePanelLayout, dragColumns, toShares, gridColumns, dragSchedList } from "../lib/panelLayout";
+import { ResizeHandle } from "./ResizeHandle";
 
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
 const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
@@ -139,6 +141,48 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
 
   const [mobilePanel, setMobilePanel] = useState<"library" | "schedule" | "live">("library");
   const panelVis = (p: "library" | "schedule" | "live") => (mobilePanel === p ? "flex" : "hidden") + " lg:flex";
+
+  // 2026-11-06: desktop panels can be resized by dragging their borders (lib/panelLayout.ts)
+  const { layout, setLayout } = usePanelLayout();
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const libRef = useRef<HTMLElement | null>(null);
+  const schedRef = useRef<HTMLElement | null>(null);
+  const outRef = useRef<HTMLElement | null>(null);
+  const schedListRef = useRef<HTMLDivElement | null>(null);
+  const dragFrom = useRef<{ widths?: [number, number, number]; list?: number; column?: number }>({});
+  const [edges, setEdges] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const g = grid.getBoundingClientRect();
+      const a = libRef.current?.getBoundingClientRect();
+      const b = schedRef.current?.getBoundingClientRect();
+      if (a && b && a.width && b.width) setEdges([a.right - g.left, b.right - g.left]);
+    };
+    const ro = new ResizeObserver(measure);
+    [grid, libRef.current, schedRef.current].forEach((el) => el && ro.observe(el));
+    measure();
+    return () => ro.disconnect();
+  }, []);
+  const startColumns = () => {
+    const w = (el: HTMLElement | null) => el?.getBoundingClientRect().width || 0;
+    dragFrom.current = { widths: [w(libRef.current), w(schedRef.current), w(outRef.current)] };
+  };
+  const moveColumns = (edge: 0 | 1, dx: number) => {
+    const from = dragFrom.current.widths;
+    if (from) setLayout((l) => ({ ...l, cols: toShares(dragColumns(from, edge, dx)) }));
+  };
+  const startSchedList = () => {
+    dragFrom.current = {
+      list: schedListRef.current?.getBoundingClientRect().height || 0,
+      column: schedRef.current?.getBoundingClientRect().height || 0,
+    };
+  };
+  const moveSchedList = (dy: number) => {
+    const { list, column } = dragFrom.current;
+    if (list !== undefined && column) setLayout((l) => ({ ...l, schedList: dragSchedList(list, column, dy) }));
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -574,9 +618,33 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       )}
 
       {/* ===== 3 panels ===== */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 overflow-hidden lg:grid-cols-[minmax(16rem,0.95fr)_minmax(20rem,1.3fr)_minmax(21rem,1.3fr)] 2xl:grid-cols-[minmax(16rem,0.8fr)_minmax(20rem,1.05fr)_minmax(21rem,1.75fr)]">
+      <div
+        ref={gridRef}
+        className={`relative grid min-h-0 flex-1 grid-cols-1 grid-rows-1 overflow-hidden ${
+          layout.cols
+            ? "lg:grid-cols-[var(--wtp-cols)]"
+            : "lg:grid-cols-[minmax(16rem,0.95fr)_minmax(20rem,1.3fr)_minmax(21rem,1.3fr)] 2xl:grid-cols-[minmax(16rem,0.8fr)_minmax(20rem,1.05fr)_minmax(21rem,1.75fr)]"
+        }`}
+        style={layout.cols ? ({ "--wtp-cols": gridColumns(layout.cols) } as React.CSSProperties) : undefined}
+      >
+        {/* 2026-11-06: drag handles on the two column borders (desktop) */}
+        {edges &&
+          ([0, 1] as const).map((edge) => (
+            <ResizeHandle
+              key={edge}
+              axis="x"
+              label={edge === 0 ? "Lapad ng Library / Schedule" : "Lapad ng Schedule / Output"}
+              valueNow={layout.cols ? (edge === 0 ? layout.cols[0] : layout.cols[0] + layout.cols[1]) * 100 : undefined}
+              className="-translate-x-1/2"
+              style={{ left: edges[edge] }}
+              onStart={startColumns}
+              onMove={(dx) => moveColumns(edge, dx)}
+              onReset={() => setLayout((l) => ({ ...l, cols: null }))}
+              testId={`resize-col-${edge}`}
+            />
+          ))}
         {/* ---------- PANEL 1: LIBRARY ---------- */}
-        <section className={`${panelVis("library")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Library">
+        <section ref={libRef} className={`${panelVis("library")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Library">
           <div className="space-y-2.5 border-b border-line p-3">
             <div className="hidden items-center justify-between lg:flex">
               <span className="eyebrow">Library</span>
@@ -635,7 +703,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         </section>
 
         {/* ---------- PANEL 2: SCHEDULE + SLIDES ---------- */}
-        <section className={`${panelVis("schedule")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Schedule">
+        <section ref={schedRef} className={`${panelVis("schedule")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Schedule">
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
             <span className="eyebrow">
               Schedule <span className="ml-1 font-mono font-normal normal-case tracking-normal">{scheduleItems.length}</span>
@@ -666,7 +734,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
 
           {/* schedule items */}
           {/* 2026-10-28: taller list + bigger rows (sabi ni Jack: "lakihan / habaan ang schedule") */}
-          <div className="max-h-[45%] min-h-[9rem] shrink-0 space-y-1 overflow-y-auto border-b border-line p-2 lg:max-h-[50%]">
+          <div
+            ref={schedListRef}
+            className={`max-h-[45%] min-h-[9rem] shrink-0 space-y-1 overflow-y-auto border-b border-line p-2 ${layout.schedList ? "lg:h-[var(--wtp-sched-list)] lg:max-h-none" : "lg:max-h-[50%]"}`}
+            style={layout.schedList ? ({ "--wtp-sched-list": `${layout.schedList}%` } as React.CSSProperties) : undefined}
+            data-testid="schedule-list"
+          >
             {scheduleItems.map((item, idx) => {
               const isSelected = selectedScheduleIndex === idx;
               const isItemLive = liveState.isLive && liveState.activeScheduleItemId === item.id;
@@ -732,6 +805,20 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             })}
           </div>
 
+          {/* 2026-11-06: drag handle between the schedule list and the slides (desktop) */}
+          <div className="relative hidden h-0 lg:block">
+            <ResizeHandle
+              axis="y"
+              label="Taas ng Schedule / Slides"
+              valueNow={layout.schedList ?? undefined}
+              className="-top-[5px]"
+              onStart={startSchedList}
+              onMove={moveSchedList}
+              onReset={() => setLayout((l) => ({ ...l, schedList: null }))}
+              testId="resize-schedule"
+            />
+          </div>
+
           {/* slides of the selected item */}
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 pt-2.5">
@@ -784,7 +871,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         {/* 2026-10-29 (Jarvis): setup tools (projector / phone / text style) moved into a compact
             toolbar with popovers, so Preview + Live + GO LIVE stay on screen. Preview | Live sit
             side by side when the column is wide enough (like EasyWorship / ProPresenter). */}
-        <section className={`${panelVis("live")} @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
+        <section ref={outRef} className={`${panelVis("live")} @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
           <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
             <span className="eyebrow mr-1">Output</span>
             {([
