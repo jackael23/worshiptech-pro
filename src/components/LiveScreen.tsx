@@ -3,6 +3,7 @@
  * projector output window (?output=main), so both always look the same.
  *  - Crossfade (~300 ms) when the slide / Black / Logo / Clear changes.
  *  - 2026-11-05: background and text fade separately, so a video background never restarts.
+ *  - 2026-11-06: the Logo screen can be the church's own picture / video + title (lib/logoStore.ts).
  *  - `operator` = small hints for the person running it (BLACK · Ctrl+B, "Select an item…");
  *    never shown on the projector.
  */
@@ -21,6 +22,8 @@ interface BgFrame {
 }
 interface ContentFrame {
   mode: "black" | "logo" | "slide";
+  /** 2026-11-06: custom logo — title / subtitle (both optional) instead of the default logo. */
+  logo?: { title?: string; subtitle?: string };
   text: string;
   image?: string;
   textColor?: string;
@@ -30,13 +33,28 @@ interface ContentFrame {
 
 function toFrames(s: LiveState, playVideo: boolean): { bg: BgFrame; content: ContentFrame } {
   const mode = s.isBlackout ? "black" : s.isLogo ? "logo" : "slide";
+  const customLogo = mode === "logo" && !!s.logoCustom;
   return {
-    bg: {
-      background: mode === "black" ? "#000" : mode === "logo" ? "#0b1020" : s.backgroundMediaUrl || "#0f172a",
-      bgSettings: mode === "slide" ? s.backgroundSettings : undefined,
-      videoId: mode === "slide" && playVideo ? s.backgroundVideoId : undefined,
+    bg: customLogo
+      ? {
+          background: s.logoBackground || "#0b1020",
+          bgSettings: s.logoSettings,
+          videoId: playVideo ? s.logoVideoId : undefined,
+        }
+      : {
+          background: mode === "black" ? "#000" : mode === "logo" ? "#0b1020" : s.backgroundMediaUrl || "#0f172a",
+          bgSettings: mode === "slide" ? s.backgroundSettings : undefined,
+          videoId: mode === "slide" && playVideo ? s.backgroundVideoId : undefined,
+        },
+    content: {
+      mode,
+      text: s.currentSlideText || "",
+      image: s.currentSlideImage,
+      textColor: s.currentSlideTextColor,
+      hideContent: s.isClearText,
+      style: s.textStyle,
+      logo: customLogo ? { title: s.logoTitle, subtitle: s.logoSubtitle } : undefined,
     },
-    content: { mode, text: s.currentSlideText || "", image: s.currentSlideImage, textColor: s.currentSlideTextColor, hideContent: s.isClearText, style: s.textStyle },
   };
 }
 
@@ -44,7 +62,8 @@ function toFrames(s: LiveState, playVideo: boolean): { bg: BgFrame; content: Con
 const tail = (v?: string) => (v ? `${v.length}:${v.slice(-48)}` : "");
 // Dim / fit / blur are not in the key: changing them applies at once (no fade), so a video never restarts.
 const bgKey = (f: BgFrame) => [tail(f.background), f.videoId || ""].join("|");
-const contentKey = (f: ContentFrame) => [f.mode, f.text, tail(f.image), f.textColor || "", f.hideContent ? 1 : 0, JSON.stringify(f.style ?? null)].join("|");
+const contentKey = (f: ContentFrame) =>
+  [f.mode, f.text, tail(f.image), f.textColor || "", f.hideContent ? 1 : 0, JSON.stringify(f.style ?? null), JSON.stringify(f.logo ?? null)].join("|");
 
 const BgView: React.FC<{ frame: BgFrame }> = ({ frame }) => (
   <SlideScreen slide={null} background={frame.background} bgSettings={frame.bgSettings} bgVideoId={frame.videoId} layer="bg" />
@@ -58,7 +77,13 @@ const ContentView: React.FC<{ frame: ContentFrame; textScale: number }> = ({ fra
     textStyle={frame.style}
     layer="content"
   >
-    {frame.mode === "logo" && (
+    {frame.mode === "logo" && frame.logo && (frame.logo.title || frame.logo.subtitle) && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-[6cqw] text-center [text-shadow:0_0.3cqw_0.9cqw_rgb(0_0_0/0.85)]" data-logo-custom>
+        {frame.logo.title && <div className="text-[5cqw] font-bold leading-tight tracking-wide text-white">{frame.logo.title}</div>}
+        {frame.logo.subtitle && <div className="mt-[1cqw] text-[2.8cqw] text-zinc-100">{frame.logo.subtitle}</div>}
+      </div>
+    )}
+    {frame.mode === "logo" && !frame.logo && (
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
         <div className="mb-[2cqw] grid h-[12cqw] w-[12cqw] place-items-center rounded-full bg-[#3b82f6] text-[5cqw] font-bold text-white">✝</div>
         <div className="text-[4cqw] font-bold tracking-wide text-white">GRACE CHURCH OF WORSHIP</div>

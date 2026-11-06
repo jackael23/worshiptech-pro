@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Type as TypeIcon,
   X,
+  Settings2,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -48,6 +49,8 @@ import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../li
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary } from "./MediaLibrary";
 import { isVideoId } from "../lib/mediaStore";
+import { useLogoFrame, withLogo } from "../lib/logoStore";
+import { LogoSettingsModal } from "./LogoSettingsModal";
 
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
 const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
@@ -207,6 +210,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       slides: song.slides,
       activeSlideIndex: 0,
       background: song.defaultBackground,
+      // 2026-11-06: My Song's own background (picture / video upload + dim / fit / blur)
+      ...(song.bgMediaId ? { bgMediaId: song.bgMediaId } : {}),
+      ...(song.bgId && song.bgSettings ? { bgSettings: song.bgSettings } : {}),
     };
     setScheduleItems((prev) => [...prev, newItem]);
     setSelectedScheduleIndex(scheduleItems.length);
@@ -385,6 +391,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   const remote = useRemoteHost(handleRemoteCmd);
   // 2026-10-29: Output toolbar panels (one open at a time; X / Esc / same button closes)
   const [tool, setTool] = useState<null | "projector" | "phone" | "style">(null);
+  // 2026-11-06: custom Logo screen (picture / video + title) — merged into what the screens show
+  const logo = useLogoFrame();
+  const shownLive = withLogo(liveState, logo);
+  const [logoOpen, setLogoOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!tool) return;
@@ -399,7 +409,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     const onAir = scheduleItems.find((i) => i.id === liveState.activeScheduleItemId);
     const nextSlide = onAir?.slides[liveState.activeSlideIndex + 1];
     remote.publish({
-      live: liveState,
+      live: shownLive,
       next: nextSlide
         ? {
             label: nextSlide.label,
@@ -415,7 +425,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       schedule: scheduleForRemote(scheduleItems),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remote.availability, remote.publish, liveState, scheduleItems, currentScheduleItem?.id, selectedSlideIndex]);
+  }, [remote.availability, remote.publish, liveState, logo, scheduleItems, currentScheduleItem?.id, selectedSlideIndex]);
 
   // Keyboard shortcut simulation handler
   useEffect(() => {
@@ -844,7 +854,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
 
                 <div className={`overflow-hidden rounded-lg ring-1 ${liveOnAir ? "ring-live/60" : "ring-line"}`} data-testid="live-monitor">
                   {/* MAIN — same component as the projector window (2026-10-28) */}
-                  {previewOutputMode === "main" && <LiveMainScreen liveState={liveState} operator />}
+                  {previewOutputMode === "main" && <LiveMainScreen liveState={shownLive} operator />}
 
                   {/* FOLDBACK (stage confidence monitor) */}
                   {previewOutputMode === "foldback" && (
@@ -899,7 +909,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             </div>
 
             {/* GO LIVE + Black / Clear / Logo in one row */}
-            <div className="grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))] gap-1.5">
+            <div className="grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto] gap-1.5">
               <button onClick={handleGoLive} className="btn btn-primary btn-lg h-12 w-full">
                 <Play className="h-4 w-4 fill-current" />
                 GO LIVE
@@ -926,7 +936,18 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               >
                 Logo <span className="font-mono text-xs opacity-70">Ctrl L</span>
               </button>
+              {/* 2026-11-06: Logo settings (picture / video / title) */}
+              <button
+                onClick={() => setLogoOpen(true)}
+                className={`btn btn-secondary h-12 w-10 px-0 ${logo.logoCustom ? "text-accent-text" : ""}`}
+                title="Logo settings: larawan / video / title"
+                aria-label="Logo settings"
+                data-testid="logo-settings"
+              >
+                <Settings2 className="h-4 w-4" />
+              </button>
             </div>
+            {logoOpen && <LogoSettingsModal liveState={liveState} onClose={() => setLogoOpen(false)} />}
 
             {/* 2026-10-29: tool panel (projector / phone / text style) — below the controls so Live stays visible */}
               {tool && (
@@ -1029,7 +1050,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     {/* small copy of the Live screen, so changes are visible while the big one is scrolled away */}
                     <div className="flex items-center gap-3">
                       <div className="w-40 shrink-0 overflow-hidden rounded ring-1 ring-live/50" data-testid="style-live-mini">
-                        <LiveMainScreen liveState={liveState} fade={false} playVideo={false} />
+                        <LiveMainScreen liveState={shownLive} fade={false} playVideo={false} />
                       </div>
                       <p className="text-xs text-fg-subtle">Live ngayon — dito mo makikita agad ang binabago mo.</p>
                     </div>

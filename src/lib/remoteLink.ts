@@ -187,6 +187,9 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
           backgroundMediaUrl: await shrinkPictures(s.live.backgroundMediaUrl),
           // 2026-11-05: the phone shows the video's poster (backgroundMediaUrl) — the video stays on the laptop
           backgroundVideoId: undefined,
+          // 2026-11-06: same for a custom Logo screen (small picture / poster, no video)
+          logoBackground: await shrinkPictures(s.live.logoBackground),
+          logoVideoId: undefined,
         };
         const next = s.next
           ? { ...s.next, image: await shrinkPictures(s.next.image), background: await shrinkPictures(s.next.background) }

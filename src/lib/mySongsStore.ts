@@ -5,7 +5,7 @@
  * here (sanitize, import/export, upsert) are still used; loadMySongs() = old list, for migration.
  * The app ships no copyrighted lyrics; the user's church licence (e.g. CCLI) covers their use.
  */
-import { SongItem } from "../types";
+import { SongItem, BackgroundSettings } from "../types";
 import { parseLyrics } from "./lyricsParser";
 
 export const MY_SONGS_STORAGE_KEY = "wtp.mySongs.v1";
@@ -16,7 +16,7 @@ export const MY_SONGS_LIMITS = {
   MAX_FIELD: 80, // author, key, ccli
   MAX_IMPORT_BYTES: 20 * 1024 * 1024, // 2026-11-03: was 2 MB
 };
-const USER_SONG_BACKGROUND = "linear-gradient(135deg, #334155 0%, #0f172a 100%)";
+export const USER_SONG_BACKGROUND = "linear-gradient(135deg, #334155 0%, #0f172a 100%)";
 
 export interface StoredSong {
   id: string;
@@ -26,11 +26,25 @@ export interface StoredSong {
   ccli: string;
   copyright?: string; // 2026-10-20: e.g. "© 2016 Hillsong Music Publishing" (from SongSelect imports)
   lyrics: string; // raw text, so editing keeps the user's formatting
+  /** 2026-11-06: own background — id only ("bg-…" built-in, "img-…"/"vid-…" Media upload), never the file itself. */
+  bgId?: string;
+  bgSettings?: BackgroundSettings;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SongDraft = Pick<StoredSong, "title" | "author" | "key" | "ccli" | "copyright" | "lyrics">;
+export type SongDraft = Pick<StoredSong, "title" | "author" | "key" | "ccli" | "copyright" | "lyrics" | "bgId" | "bgSettings">;
+
+/** 2026-11-06: background ids that may be stored on a song. */
+export const SONG_BG_ID_RE = /^(bg|img|vid)-[\w-]{1,70}$/; // same id rule as scheduleStore
+
+/** Cleans background settings (dim 0–0.7, blur 0–20, fit cover/contain). */
+export function sanitizeBgSettings(v: unknown): BackgroundSettings | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const num = (x: unknown, min: number, max: number) => (typeof x === "number" && isFinite(x) ? Math.min(max, Math.max(min, x)) : min);
+  return { dim: num(o.dim, 0, 0.7), blur: Math.round(num(o.blur, 0, 20)), fit: o.fit === "contain" ? "contain" : "cover" };
+}
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -59,6 +73,7 @@ export function sanitizeSong(input: unknown): StoredSong | null {
     ccli: str(o.ccli, MY_SONGS_LIMITS.MAX_FIELD),
     copyright: str(o.copyright, 300) || undefined,
     lyrics,
+    ...(typeof o.bgId === "string" && SONG_BG_ID_RE.test(o.bgId) ? { bgId: o.bgId, bgSettings: sanitizeBgSettings(o.bgSettings) } : {}),
     createdAt: str(o.createdAt, 40) || now,
     updatedAt: str(o.updatedAt, 40) || now,
   };
@@ -101,6 +116,8 @@ export function toSongItem(s: StoredSong): SongItem {
     slides: parseLyrics(s.lyrics),
     defaultBackground: USER_SONG_BACKGROUND,
     source: "user",
+    bgId: s.bgId,
+    bgSettings: s.bgSettings,
   };
 }
 
@@ -171,22 +188,50 @@ export function importMySongsJson(text: string, current: StoredSong[]): ImportRe
  * 2026-10-20: adds songs read from SongSelect / ChordPro files.
  * Same CCLI # (or, without one, same title + author) = update the existing My Song; otherwise add.
  */
+const songKeyOf = (s: { title: string; author?: string }) => `${s.title.trim().toLowerCase()}|${(s.author || "").trim().toLowerCase()}`;
+/** Same CCLI # (or, without one, same title + author) = the same song. */
+function findSameSong(list: StoredSong[], song: { title: string; author?: string; ccli?: string }): number {
+  const ccli = (song.ccli || "").trim();
+  return list.findIndex((s) => (ccli && s.ccli === ccli) || (!ccli && songKeyOf(s) === songKeyOf(song)));
+}
+
+export type UpsertStatus = "new" | "update" | "invalid" | "full";
+
+/**
+ * 2026-11-06 (Bulk Add preview): what upsertSongs WOULD do with each draft, without saving.
+ * A song repeated inside the same batch shows as "update" (the later copy wins), like upsertSongs.
+ */
+export function planUpsert(current: StoredSong[], drafts: SongDraft[]): UpsertStatus[] {
+  const sim: StoredSong[] = [...current];
+  const now = new Date().toISOString();
+  return drafts.map((d) => {
+    const clean = sanitizeSong({ ...d, id: newSongId(), createdAt: now, updatedAt: now });
+    if (!clean) return "invalid";
+    if (findSameSong(sim, clean) >= 0) return "update";
+    if (sim.length >= MY_SONGS_LIMITS.MAX_SONGS) return "full";
+    sim.push(clean);
+    return "new";
+  });
+}
+
 export function upsertSongs(current: StoredSong[], drafts: SongDraft[]): { songs: StoredSong[]; added: number; updated: number; skipped: number } {
   const result = [...current];
   let added = 0;
   let updated = 0;
   let skipped = 0;
   const now = new Date().toISOString();
-  const keyOf = (s: { title: string; author?: string }) => `${s.title.trim().toLowerCase()}|${(s.author || "").trim().toLowerCase()}`;
   for (const d of drafts) {
     const clean = sanitizeSong({ ...d, id: newSongId(), createdAt: now, updatedAt: now });
     if (!clean) {
       skipped++;
       continue;
     }
-    const idx = result.findIndex((s) => (clean.ccli && s.ccli === clean.ccli) || (!clean.ccli && keyOf(s) === keyOf(clean)));
+    const idx = findSameSong(result, clean);
     if (idx >= 0) {
-      result[idx] = { ...clean, id: result[idx].id, createdAt: result[idx].createdAt };
+      const old = result[idx];
+      // 2026-11-06: a re-import without a background keeps the song's background.
+      const bg = clean.bgId ? {} : { bgId: old.bgId, bgSettings: old.bgSettings };
+      result[idx] = { ...clean, ...bg, id: old.id, createdAt: old.createdAt };
       updated++;
     } else if (result.length < MY_SONGS_LIMITS.MAX_SONGS) {
       result.push(clean);

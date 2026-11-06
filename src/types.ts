@@ -26,6 +26,13 @@ export interface SongItem {
   defaultBackground?: string;
   /** 2026-10-20: sample = built-in PD hymn, user = My Songs (browser only), reference = title/author only, no lyrics. */
   source?: "sample" | "user" | "reference";
+  /**
+   * 2026-11-06: the song's own background (My Songs). bgId = built-in "bg-…" or Media-tab upload "img-…"/"vid-…".
+   * When the song is added to the schedule, defaultBackground holds the resolved CSS and bgMediaId the upload.
+   */
+  bgId?: string;
+  bgMediaId?: string;
+  bgSettings?: BackgroundSettings;
 }
 
 export interface ScriptureVerse {
@@ -129,6 +136,17 @@ export interface LiveState {
   backgroundSettings?: BackgroundSettings;
   /** 2026-11-05: video background on air ("vid-…" media id); backgroundMediaUrl = its poster. */
   backgroundVideoId?: string;
+  /**
+   * 2026-11-06: custom Logo screen (Ctrl+L), merged in by lib/logoStore.ts withLogo() — never stored
+   * in the app's own LiveState. logoBackground = picture / video poster / built-in CSS.
+   */
+  logoCustom?: boolean;
+  logoBackground?: string;
+  logoVideoId?: string;
+  logoSettings?: BackgroundSettings;
+  logoTitle?: string;
+  logoSubtitle?: string;
+  logoMissing?: boolean;
   ndiActive: boolean;
   foldbackEnabled: boolean;
   nurseryAlertText: string;

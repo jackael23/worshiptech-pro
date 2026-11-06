@@ -5,9 +5,11 @@
  *  - Reference: popular modern songs, title + artist only (no lyrics). "Add lyrics" turns
  *    one into a My Song that the user fills in themselves.
  * 2026-11-03: My Songs are saved in PouchDB (browser) + optional CouchDB sync (songsDb.ts).
+ * 2026-11-06: Bulk Add (one big paste, "---" between songs) + Import folder, both with a preview first.
+ * 2026-11-06 (b): a My Song can have its own background; Add / double-click puts it on the schedule item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon } from "lucide-react";
 import { SongItem } from "../types";
 import { SAMPLE_SONGS, REFERENCE_SONGS, SONGSELECT_SEARCH_URL } from "../data/easyworshipData";
 import {
@@ -20,8 +22,11 @@ import {
   importMySongsJson,
   upsertSongs,
 } from "../lib/mySongsStore";
-import { decodeTextFile, parseSongFile, SONG_FILE_EXTENSIONS, MAX_SONG_FILE_BYTES } from "../lib/songImport";
+import { decodeTextFile, parseSongFile, parseSongFileForBulk, SONG_FILE_EXTENSIONS, MAX_SONG_FILE_BYTES } from "../lib/songImport";
 import { SongEditorModal } from "./SongEditorModal";
+import { BulkAddModal } from "./BulkAddModal";
+import { BulkSong } from "../lib/bulkPaste";
+import { resolveSongBackground } from "../lib/songBackground";
 import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
 import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
@@ -53,6 +58,9 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [bulk, setBulk] = useState<{ mode: "paste" | "review"; songs?: BulkSong[]; note?: string } | null>(null);
+  const [readingFolder, setReadingFolder] = useState(false);
 
   // Always the latest list, so async saves diff against what is really on screen.
   const mySongsRef = useRef<StoredSong[]>([]);
@@ -188,6 +196,67 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     });
   };
 
+  // 2026-11-06 (b): the song's own background → resolved CSS (+ upload id) for the schedule item.
+  const withBackground = async (song: SongItem): Promise<SongItem> => {
+    if (!song.bgId) return song;
+    const r = await resolveSongBackground(song.bgId);
+    if (!r.css) {
+      setNotice({ text: `Wala na sa browser na ito ang background ng "${song.title}" (na-delete o hindi pa nasi-sync) — default ang ginamit.`, tone: "warn" });
+      return song;
+    }
+    return { ...song, defaultBackground: r.css, bgMediaId: r.mediaId };
+  };
+
+  // 2026-11-06: Bulk Add / Import folder → save only the songs checked in the preview.
+  const handleBulkSave = (drafts: SongDraft[]) => {
+    const r = upsertSongs(mySongsRef.current, drafts);
+    if (r.added || r.updated) {
+      persist(r.songs);
+      setFilter("user");
+    }
+    setNotice({
+      text: `Bulk Add: ${r.added} bago, ${r.updated} na-update${r.skipped ? `, ${r.skipped} hindi na-save` : ""}.`,
+      tone: r.skipped ? "warn" : "ok",
+    });
+    setBulk(null);
+  };
+
+  // 2026-11-06: Import folder — reads every song file in the chosen folder (and subfolders).
+  const MAX_FOLDER_FILES = 1000;
+  const handleImportFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const pathOf = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+    const isSongFile = (f: File) => SONG_FILE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
+    const songFiles = files
+      .filter(isSongFile)
+      .sort((a, b) => pathOf(a).localeCompare(pathOf(b), undefined, { numeric: true, sensitivity: "base" }));
+    const otherCount = files.length - songFiles.length;
+    if (songFiles.length === 0) {
+      setNotice({ text: `Walang lyrics file sa folder (${files.length} file, hindi .txt / SongSelect / ChordPro).`, tone: "warn" });
+      return;
+    }
+    setReadingFolder(true);
+    const songs: BulkSong[] = [];
+    try {
+      for (const f of songFiles.slice(0, MAX_FOLDER_FILES)) {
+        const name = pathOf(f);
+        if (f.size > MAX_SONG_FILE_BYTES) {
+          songs.push({ line: 1, draft: { title: f.name, author: "", key: "", ccli: "", copyright: "", lyrics: "" }, slideCount: 0, error: "Masyadong malaki ang file (max 512 KB).", source: name });
+          continue;
+        }
+        songs.push(...parseSongFileForBulk(name, decodeTextFile(await f.arrayBuffer())));
+      }
+    } finally {
+      setReadingFolder(false);
+    }
+    const notes: string[] = [`${songFiles.length} lyrics file ang nabasa`];
+    if (otherCount) notes.push(`${otherCount} ibang file ang nilaktawan (hindi .txt / SongSelect / ChordPro)`);
+    if (songFiles.length > MAX_FOLDER_FILES) notes.push(`max ${MAX_FOLDER_FILES} file lang bawat import`);
+    setBulk({ mode: "review", songs, note: notes.join(" · ") + "." });
+  };
+
   const q = searchQuery.trim().toLowerCase();
   const matches = (s: { title: string; author?: string }) =>
     !q || s.title.toLowerCase().includes(q) || (s.author || "").toLowerCase().includes(q);
@@ -227,11 +296,29 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           <Upload className="w-3.5 h-3.5" />
           Import
         </button>
+        <button onClick={() => setBulk({ mode: "paste" })} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line`} title="Bulk Add: mag-paste ng maraming kanta nang sabay (--- sa pagitan ng bawat kanta)">
+          <ListPlus className="w-3.5 h-3.5" />
+          Bulk Add
+        </button>
+        <button onClick={() => folderInputRef.current?.click()} disabled={readingFolder} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40`} title="Import folder: lahat ng .txt / SongSelect / ChordPro sa isang folder (kasama ang subfolders); may preview muna">
+          <FolderOpen className="w-3.5 h-3.5" />
+          {readingFolder ? "Binabasa..." : "Folder"}
+        </button>
         <button onClick={handleExport} disabled={mySongs.length === 0} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40 disabled:cursor-not-allowed`} title="Export My Songs (.json backup)">
           <Download className="w-3.5 h-3.5" />
           Export
         </button>
         <input ref={fileInputRef} type="file" multiple accept={[".json", ...SONG_FILE_EXTENSIONS].join(",")} className="hidden" onChange={handleImportFile} data-testid="import-input" />
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          // webkitdirectory = pick a whole folder (Chrome/Edge/Firefox desktop); phones fall back to picking files.
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+          className="hidden"
+          onChange={handleImportFolder}
+          data-testid="folder-input"
+        />
       </div>
 
       <CouchSyncPanel />
@@ -250,7 +337,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
 
       {filter === "user" && mySongs.length === 0 && (
         <p className="text-xs text-fg-subtle bg-surface-2 border border-dashed border-line-strong rounded-lg p-3">
-          Wala pang sariling kanta. I-click ang <strong>New Song</strong>, o <strong>Import</strong> ng backup file o ng mga file na na-download sa CCLI SongSelect (.txt, .usr, ChordPro). Puwede ring pumili sa <strong>Reference</strong> at i-click ang "Add lyrics".
+          Wala pang sariling kanta. I-click ang <strong>New Song</strong>, <strong>Bulk Add</strong> (maraming kanta sa isang paste), <strong>Folder</strong>, o <strong>Import</strong> ng backup file o ng mga file na na-download sa CCLI SongSelect (.txt, .usr, ChordPro). Puwede ring pumili sa <strong>Reference</strong> at i-click ang "Add lyrics".
         </p>
       )}
       {rows.length === 0 && !(filter === "user" && mySongs.length === 0) && (
@@ -267,7 +354,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
             onDoubleClick={(e) => {
               // ignore double-clicks on the row's own buttons/links
               if (isRef || !onLiveSong || (e.target as HTMLElement).closest("button, a")) return;
-              onLiveSong(song);
+              void withBackground(song).then(onLiveSong);
             }}
             title={isRef ? undefined : "Double-click = Add + LIVE"}
             className={`bg-surface-2 hover:bg-surface-3 border border-line rounded-lg p-2.5 lg:py-1.5 transition-all text-xs group shadow-xs ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
@@ -277,6 +364,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                 <div className="font-semibold text-fg truncate flex items-center gap-1.5">
                   <span className="truncate">{song.title}</span>
                   {isUser && <span className="shrink-0 px-1.5 rounded bg-accent-soft text-accent-text border border-accent/30 text-xs font-medium">My Song</span>}
+                  {isUser && song.bgId && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-accent-text" aria-label="May sariling background" />}
                 </div>
                 <div className="text-xs text-fg-subtle flex items-center gap-2 mt-0.5 min-w-0">
                   {isRef ? (
@@ -361,7 +449,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                       </>
                     ) : (
                       <button
-                        onClick={() => onAddToSchedule(song)}
+                        onClick={() => void withBackground(song).then(onAddToSchedule)}
                         className={`${smallBtn} bg-accent-soft hover:bg-accent/20 text-accent-text border-accent/30`}
                         title="Add to Service Schedule"
                       >
@@ -376,6 +464,17 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           </div>
         );
       })}
+
+      {bulk && (
+        <BulkAddModal
+          mode={bulk.mode}
+          initialSongs={bulk.songs}
+          note={bulk.note}
+          currentSongs={mySongs}
+          onSave={handleBulkSave}
+          onClose={() => setBulk(null)}
+        />
+      )}
 
       {editor && (
         <SongEditorModal mode={editor.mode} initial={editor.initial} onSave={handleSave} onClose={() => setEditor(null)} />

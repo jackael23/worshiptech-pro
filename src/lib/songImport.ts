@@ -7,7 +7,8 @@
  * Pure functions (no DOM) so they can be tested on their own. Lyrics never leave the browser.
  */
 import { SongDraft } from "./mySongsStore";
-import { asSectionLabel } from "./lyricsParser";
+import { asSectionLabel, parseLyrics } from "./lyricsParser";
+import { BulkSong, parseBulkText } from "./bulkPaste";
 
 export const SONG_FILE_EXTENSIONS = [".txt", ".usr", ".bin", ".cho", ".chordpro", ".chopro", ".pro", ".crd"];
 export const MAX_SONG_FILE_BYTES = 512 * 1024;
@@ -196,6 +197,30 @@ export function parseChordPro(text: string): SongDraft | null {
   const lyrics = buildLyrics(sections);
   if (!meta.title || !lyrics) return null;
   return { title: meta.title, author: meta.author || "", key: meta.key || "", ccli: meta.ccli || "", copyright: meta.copyright || "", lyrics };
+}
+
+/**
+ * 2026-11-06 (Bulk Add → Import folder): one file → songs for the preview list.
+ *  - .txt with a SongSelect footer ("CCLI Song # …") → SongSelect parser (as before).
+ *  - Plain .txt (typed lyrics) → Bulk Add rules: first line = title (else the file name),
+ *    optional Author:/Key:/CCLI: lines, blank line = new slide, "---" = another song in the same file.
+ *  - .usr / .bin / ChordPro → their parsers.
+ */
+export function parseSongFileForBulk(fileName: string, text: string): BulkSong[] {
+  const ext = (fileName.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  const baseName = fileName.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "").trim();
+  const asError = (error: string): BulkSong[] => [
+    { line: 1, draft: { title: baseName, author: "", key: "", ccli: "", copyright: "", lyrics: "" }, slideCount: 0, error, source: fileName },
+  ];
+  if (ext === ".txt" && !/^\s*CCLI\b(?!.*licen[cs]e)/im.test(text)) {
+    const { songs } = parseBulkText(text, baseName);
+    if (songs.length === 0) return asError("Walang laman ang file.");
+    return songs.map((s) => ({ ...s, source: fileName }));
+  }
+  const { song, error } = parseSongFile(fileName, text);
+  if (!song) return asError((error || "Hindi mabasa.").replace(`${fileName}: `, ""));
+  const slideCount = parseLyrics(song.lyrics).length;
+  return [{ line: 1, draft: song, slideCount, source: fileName, error: slideCount ? undefined : "Walang lyrics." }];
 }
 
 /** Picks the parser by file extension. */

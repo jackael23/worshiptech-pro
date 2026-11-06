@@ -12,6 +12,7 @@ import { ShortcutsPanel } from "./components/ShortcutsPanel";
 import { EasyWorshipVersion, SupportedLanguage, LiveState } from "./types";
 import { SAMPLE_SONGS } from "./data/easyworshipData";
 import { openLiveChannel, LiveMessage, OUTPUT_TIMEOUT_MS } from "./lib/liveChannel";
+import { useLogoFrame, withLogo } from "./lib/logoStore";
 
 // 2026-10-28 (Jarvis): theme (dark by default) — saved in this browser; index.html applies it before first paint.
 const THEME_KEY = "wtp-theme";
@@ -65,6 +66,10 @@ export default function App() {
   const initialLiveRef = useRef(liveState); // untouched default = never pushed over what a projector shows
   const liveRef = useRef(liveState);
   liveRef.current = liveState;
+  // 2026-11-06: the custom Logo screen is merged in only when a frame is sent (see lib/logoStore.ts)
+  const logo = useLogoFrame();
+  const logoRef = useRef(logo);
+  logoRef.current = logo;
   const [outputCount, setOutputCount] = useState(0);
   const chRef = useRef<ReturnType<typeof openLiveChannel>>(null);
 
@@ -76,7 +81,7 @@ export default function App() {
         const isNew = !seen.has(m.id);
         seen.set(m.id, Date.now());
         setOutputCount(seen.size);
-        if (m.type === "output-hello" || isNew) ch?.post({ type: "frame", state: liveRef.current });
+        if (m.type === "output-hello" || isNew) ch?.post({ type: "frame", state: withLogo(liveRef.current, logoRef.current) });
       } else if (m.type === "bye") {
         seen.delete(m.id);
         setOutputCount(seen.size);
@@ -105,8 +110,8 @@ export default function App() {
 
   useEffect(() => {
     if (liveState === initialLiveRef.current) return; // nothing changed yet — don't overwrite the projector
-    chRef.current?.post({ type: "frame", state: liveState });
-  }, [liveState]);
+    chRef.current?.post({ type: "frame", state: withLogo(liveState, logo) });
+  }, [liveState, logo]);
 
   const [initialAIQuery, setInitialAIQuery] = useState<string | null>(null);
 

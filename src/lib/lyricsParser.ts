@@ -38,12 +38,24 @@ export function asSectionLabel(line: string): string | null {
   return m ? formatLabel(m[1], m[2]) : null;
 }
 
-export function parseLyrics(raw: string): ParsedSlide[] {
+/**
+ * 2026-11-06: same as parseLyrics, plus where each slide sits in the text
+ * (start/end = character offsets of its first and last line, after \r\n → \n).
+ * Used to highlight a slide's lines in the lyrics box when its thumbnail is clicked.
+ */
+export interface ParsedSlideRange extends ParsedSlide {
+  start: number;
+  end: number;
+}
+
+export function parseLyricsWithRanges(raw: string): ParsedSlideRange[] {
   const lines = (raw || "").replace(/\r\n?/g, "\n").split("\n");
-  const slides: ParsedSlide[] = [];
+  const slides: ParsedSlideRange[] = [];
   let label: string | null = null; // current section label
   let labelUsed = false; // has a slide already used the current label?
   let block: string[] = [];
+  let blockStart = 0;
+  let blockEnd = 0;
 
   const flush = () => {
     if (block.length === 0) return;
@@ -54,11 +66,14 @@ export function parseLyrics(raw: string): ParsedSlide[] {
     } else {
       slideLabel = `Slide ${slides.length + 1}`;
     }
-    slides.push({ label: slideLabel, text: block.join("\n") });
+    slides.push({ label: slideLabel, text: block.join("\n"), start: blockStart, end: blockEnd });
     block = [];
   };
 
+  let offset = 0;
   for (const rawLine of lines) {
+    const lineStart = offset;
+    offset += rawLine.length + 1; // + "\n"
     const line = rawLine.replace(/\s+$/g, "").replace(/^\s+/g, "");
     if (!line) {
       flush();
@@ -71,9 +86,16 @@ export function parseLyrics(raw: string): ParsedSlide[] {
       labelUsed = false;
       continue;
     }
+    if (block.length === 0) blockStart = lineStart;
     block.push(line);
+    blockEnd = lineStart + rawLine.length;
     if (slides.length >= MAX_SLIDES) break;
   }
   flush();
   return slides.slice(0, MAX_SLIDES);
+}
+
+export function parseLyrics(raw: string): ParsedSlide[] {
+  // 2026-11-06: same rules as before, now shared with parseLyricsWithRanges.
+  return parseLyricsWithRanges(raw).map(({ label, text }) => ({ label, text }));
 }
