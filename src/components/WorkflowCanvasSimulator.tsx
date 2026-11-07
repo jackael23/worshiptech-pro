@@ -24,6 +24,7 @@ import {
   Type as TypeIcon,
   X,
   Settings2,
+  Pencil,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -53,6 +54,10 @@ import { useLogoFrame, withLogo } from "../lib/logoStore";
 import { LogoSettingsModal } from "./LogoSettingsModal";
 import { usePanelLayout, dragColumns, toShares, gridColumns, dragSchedList } from "../lib/panelLayout";
 import { ResizeHandle } from "./ResizeHandle";
+import { SongEditorModal } from "./SongEditorModal";
+import { loadSongsFromDb, reloadSongs, saveSongsDiff, watchSongs } from "../lib/songsDb";
+import type { StoredSong, SongDraft } from "../lib/mySongsStore";
+import { syncScheduleWithSongs, songSlides, retitle, slidesToLyrics, SONG_ID_RE } from "../lib/scheduleSync";
 
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
 const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
@@ -91,6 +96,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     loadSchedule().then((saved) => {
       if (!alive) return;
       if (saved && saved.length > 0) {
+        scheduleRef.current = saved;
         setScheduleItems(saved);
         setSelectedScheduleIndex(Math.min(loadSelectedIndex(), saved.length - 1));
         setSelectedSlideIndex(0);
@@ -103,6 +109,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         );
       }
       scheduleLoaded.current = true;
+      // 2026-11-07: songs edited while the Simulator was closed (e.g. CouchDB sync) → catch up now
+      if (songsRef.current) applySongs(songsRef.current);
     });
     return () => {
       alive = false;
@@ -116,6 +124,108 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     if (scheduleLoaded.current) saveSelectedIndex(selectedScheduleIndex);
   }, [selectedScheduleIndex]);
   const [selectedSlideIndex, setSelectedSlideIndex] = useState<number>(0);
+
+  // ---------- 2026-11-07 (Jarvis): song items follow their My Song (lib/scheduleSync.ts) ----------
+  // Latest schedule for async callbacks (song DB changes arrive outside React's render).
+  const scheduleRef = useRef<ScheduleItem[]>(scheduleItems);
+  scheduleRef.current = scheduleItems;
+  /** My Songs as last read from the songs database (null = not read yet / database unavailable). */
+  const songsRef = useRef<StoredSong[] | null>(null);
+  /** The slide on air follows an edit of its song (same slide number; last slide if it got shorter). */
+  const refreshLiveText = (items: ScheduleItem[]) => {
+    setLiveState((prev) => {
+      const onAir = items.find((i) => i.id === prev.activeScheduleItemId);
+      if (!onAir || onAir.slides.length === 0) return prev;
+      const idx = Math.min(prev.activeSlideIndex, onAir.slides.length - 1);
+      const slide = onAir.slides[idx];
+      const nextSlideText = onAir.slides[idx + 1]?.text || onAir.slides[idx + 1]?.label || "";
+      if (idx === prev.activeSlideIndex && slide.label === prev.currentSlideLabel && slide.text === prev.currentSlideText && nextSlideText === (prev.nextSlideText ?? "")) return prev;
+      return { ...prev, activeSlideIndex: idx, currentSlideLabel: slide.label, currentSlideText: slide.text, nextSlideText };
+    });
+  };
+  /** Puts a changed schedule on screen + saves it + updates the live slide. */
+  const commitSchedule = (items: ScheduleItem[]) => {
+    scheduleRef.current = items;
+    setScheduleItems(items);
+    refreshLiveText(items);
+  };
+  const applySongs = (songs: StoredSong[]) => {
+    songsRef.current = songs;
+    if (!scheduleLoaded.current) return; // the saved schedule isn't read yet — done after it loads
+    const r = syncScheduleWithSongs(scheduleRef.current, songs);
+    if (r.changed) commitSchedule(r.items);
+  };
+  useEffect(() => {
+    let alive = true;
+    loadSongsFromDb()
+      .then(({ songs, available }) => {
+        // database blocked (private mode): don't unlink anything based on an empty list
+        if (alive && available) applySongs(songs);
+      })
+      .catch(() => undefined);
+    // Song editor, Bulk Add, Import, delete, or CouchDB sync from another device → follow it.
+    const stop = watchSongs(() => {
+      reloadSongs()
+        .then((songs) => alive && applySongs(songs))
+        .catch(() => undefined);
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // keep the selected slide inside the item when an edit made it shorter
+  const selectedItemSlides = scheduleItems[selectedScheduleIndex]?.slides.length ?? 0;
+  useEffect(() => {
+    if (selectedItemSlides > 0) setSelectedSlideIndex((i) => Math.min(i, selectedItemSlides - 1));
+  }, [selectedItemSlides]);
+
+  // Edit lyrics from the Schedule (✏️ on a song item)
+  const [songEdit, setSongEdit] = useState<{ itemId: string; linked: boolean; initial: Partial<SongDraft> } | null>(null);
+  const [songEditNotice, setSongEditNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!songEditNotice) return;
+    const t = setTimeout(() => setSongEditNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [songEditNotice]);
+  const openSongEdit = (item: ScheduleItem) => {
+    const song = item.songId ? songsRef.current?.find((s) => s.id === item.songId) : undefined;
+    setSongEdit(
+      song
+        ? { itemId: item.id, linked: true, initial: song }
+        : { itemId: item.id, linked: false, initial: { title: item.title.replace(/^\d+\.\s*/, ""), lyrics: slidesToLyrics(item.slides) } },
+    );
+  };
+  const handleSongEditSave = (draft: SongDraft, opts?: { scheduleOnly: boolean }) => {
+    const edit = songEdit;
+    setSongEdit(null);
+    if (!edit) return;
+    const item = scheduleRef.current.find((i) => i.id === edit.itemId);
+    if (!item) return;
+    const songId = item.songId;
+    const prevSongs = songsRef.current;
+    if (edit.linked && !opts?.scheduleOnly && songId && prevSongs?.some((s) => s.id === songId)) {
+      // Update the My Song → every copy in the schedule + the live screen follow right away.
+      const now = new Date().toISOString();
+      const next = prevSongs.map((s) => (s.id === songId ? { ...s, ...draft, updatedAt: now } : s));
+      applySongs(next);
+      saveSongsDiff(prevSongs, next)
+        .then((ok) => setSongEditNotice(ok ? `Na-update ang "${draft.title}" sa My Songs at sa schedule.` : "Nasa schedule na ang pagbabago, pero hindi na-save sa My Songs. Subukan ulit."))
+        .catch(() => setSongEditNotice("Nasa schedule na ang pagbabago, pero hindi na-save sa My Songs. Subukan ulit."));
+      return;
+    }
+    // This schedule only: change the item and stop following the song.
+    const slides = songSlides(draft.lyrics);
+    if (slides.length === 0) return;
+    const items = scheduleRef.current.map((i) => {
+      if (i.id !== item.id) return i;
+      const { songId: _unlink, ...rest } = i;
+      return { ...rest, title: retitle(i.title, draft.title), slides, activeSlideIndex: Math.min(i.activeSlideIndex, slides.length - 1) } as ScheduleItem;
+    });
+    commitSchedule(items);
+    setSongEditNotice(`Binago ang "${draft.title}" para sa schedule na ito lang.`);
+  };
   const [previewOutputMode, setPreviewOutputMode] = useState<"main" | "foldback" | "ndi">("main");
   const [customAlertInput, setCustomAlertInput] = useState("Nursery: Parent #104 please come to Nursery");
   const [simulatedTime, setSimulatedTime] = useState("");
@@ -257,6 +367,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       // 2026-11-06: My Song's own background (picture / video upload + dim / fit / blur)
       ...(song.bgMediaId ? { bgMediaId: song.bgMediaId } : {}),
       ...(song.bgId && song.bgSettings ? { bgSettings: song.bgSettings } : {}),
+      // 2026-11-07: remember the My Song, so editing it updates this item (and the live screen)
+      ...(song.source === "user" && SONG_ID_RE.test(song.id) ? { songId: song.id } : {}),
     };
     setScheduleItems((prev) => [...prev, newItem]);
     setSelectedScheduleIndex(scheduleItems.length);
@@ -731,6 +843,21 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               Item
             </button>
           </div>
+          {/* in this panel (not the Output panel), so it also shows on phones where only one panel is visible */}
+          {songEdit && (
+            <SongEditorModal
+              mode="edit"
+              initial={songEdit.initial}
+              scheduleEdit={{ linked: songEdit.linked }}
+              onSave={handleSongEditSave}
+              onClose={() => setSongEdit(null)}
+            />
+          )}
+          {songEditNotice && (
+            <p role="status" className="shrink-0 border-b border-line bg-ok-soft px-3 py-1.5 text-xs text-fg" data-testid="schedule-notice">
+              {songEditNotice}
+            </p>
+          )}
 
           {/* schedule items */}
           {/* 2026-10-28: taller list + bigger rows (sabi ni Jack: "lakihan / habaan ang schedule") */}
@@ -766,6 +893,21 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   <span className={`min-w-0 flex-1 truncate ${isSelected ? "font-medium" : ""}`}>{cleanTitle(item.title)}</span>
                   {isItemLive && <span className="badge badge-live px-1 py-0 leading-4">LIVE</span>}
                   <div className={`flex shrink-0 items-center ${isSelected ? "" : "lg:opacity-0 lg:group-hover:opacity-100"}`}>
+                    {item.type === "song" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSongEdit(item);
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        className="touch-44 grid place-items-center rounded p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg lg:min-h-0 lg:min-w-0"
+                        title="Edit lyrics"
+                        aria-label={`Edit lyrics: ${cleanTitle(item.title)}`}
+                        data-testid="schedule-edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

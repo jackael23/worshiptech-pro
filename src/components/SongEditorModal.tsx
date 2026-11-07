@@ -6,6 +6,8 @@
  * 2026-11-06 (b): preview uses the projector's text size + Text style; clicking a slide selects its
  *   lines in the lyrics box (and moving the cursor in the box shows that slide); "Background" tab =
  *   the song's own picture / video / built-in background; mode "bulk" = edit one song of Bulk Add.
+ * 2026-11-07: `scheduleEdit` = opened from a song in the Schedule. Save updates the My Song (and with it
+ *   every copy in the schedule + the live screen), or — "Para sa schedule na ito lang" — only that item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X, Save, Info, Image as ImageIcon, Rows3 } from "lucide-react";
@@ -19,8 +21,13 @@ interface SongEditorModalProps {
   /** "bulk" = editing one song of the Bulk Add / Import folder preview (not saved to My Songs yet). */
   mode: "new" | "edit" | "bulk";
   initial?: Partial<SongDraft>;
-  onSave: (draft: SongDraft) => void;
+  onSave: (draft: SongDraft, opts?: { scheduleOnly: boolean }) => void;
   onClose: () => void;
+  /**
+   * 2026-11-07: editing a song from the Schedule. linked = the item follows a My Song (that song can be
+   * updated); not linked (sample hymn, or an item already changed for this schedule only) = this item only.
+   */
+  scheduleEdit?: { linked: boolean };
 }
 
 const inputCls =
@@ -28,7 +35,7 @@ const inputCls =
 
 const HEADINGS = { new: "New Song (My Songs)", edit: "Edit Song", bulk: "I-edit bago i-save (Bulk Add)" };
 
-export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial, onSave, onClose }) => {
+export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial, onSave, onClose, scheduleEdit }) => {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [author, setAuthor] = useState(initial?.author ?? "");
   const [songKey, setSongKey] = useState(initial?.key ?? "");
@@ -38,6 +45,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
   const [bg, setBg] = useState<SongBgValue>({ bgId: initial?.bgId, bgSettings: initial?.bgSettings });
   const [tab, setTab] = useState<"slides" | "background">("slides");
   const [touched, setTouched] = useState(false);
+  const [scheduleOnly, setScheduleOnly] = useState(!!scheduleEdit && !scheduleEdit.linked);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const lyricsRef = useRef<HTMLTextAreaElement>(null);
 
@@ -88,7 +96,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
     e.preventDefault();
     setTouched(true);
     if (!canSave) return;
-    onSave({
+    const draft: SongDraft = {
       title: title.trim(),
       author: author.trim(),
       key: songKey.trim(),
@@ -97,7 +105,9 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
       lyrics,
       bgId: bg.bgId,
       bgSettings: bg.bgId ? bg.bgSettings : undefined,
-    });
+    };
+    if (scheduleEdit) onSave(draft, { scheduleOnly });
+    else onSave(draft);
   };
 
   return (
@@ -109,7 +119,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-line">
-          <h3 className="text-base font-bold text-fg">{HEADINGS[mode]}</h3>
+          <h3 className="text-base font-bold text-fg">{scheduleEdit ? "Edit lyrics (Schedule)" : HEADINGS[mode]}</h3>
           <button type="button" onClick={onClose} className="p-2 -mr-2 rounded-lg text-fg-subtle hover:bg-surface-3" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
@@ -172,6 +182,8 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
                   </span>
                 )}
               </span>
+              {/* 2026-11-07: from the Schedule = lyrics only (the item's background is set in the Media tab) */}
+              {!scheduleEdit && (
               <div className="seg grid grid-cols-2" role="group" aria-label="Preview">
                 <button type="button" onClick={() => setTab("slides")} aria-pressed={tab === "slides"} className="seg-item tap-target">
                   <Rows3 className="h-3.5 w-3.5" /> Slides
@@ -180,6 +192,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
                   <ImageIcon className="h-3.5 w-3.5" /> Background: {bgName}
                 </button>
               </div>
+              )}
             </div>
             {tab === "slides" ? (
               <SongPreview slides={slides} picked={picked} onPick={pickSlide} bgId={bg.bgId} bgSettings={bg.bgSettings} />
@@ -202,7 +215,29 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-line">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3 border-t border-line">
+          {scheduleEdit && (
+            <label className="mr-auto flex min-h-11 items-center gap-2 text-sm text-fg" title={scheduleEdit.linked ? undefined : "Sample hymn o kopyang binago na para sa schedule na ito"}>
+              <input
+                type="checkbox"
+                checked={scheduleOnly}
+                disabled={!scheduleEdit.linked}
+                onChange={(e) => setScheduleOnly(e.target.checked)}
+                className="h-4 w-4 accent-accent"
+                data-testid="schedule-only"
+              />
+              <span>
+                Para sa schedule na ito lang
+                <span className="block text-xs text-fg-subtle">
+                  {!scheduleEdit.linked
+                    ? "Hindi ito naka-link sa My Songs, kaya dito lang magbabago."
+                    : scheduleOnly
+                      ? "Hindi na susunod ang item na ito sa mga edit ng My Song."
+                      : "Mababago ang My Song at lahat ng kopya nito sa schedule (pati ang LIVE)."}
+                </span>
+              </span>
+            </label>
+          )}
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-fg border border-line hover:bg-surface-3">
             Cancel
           </button>

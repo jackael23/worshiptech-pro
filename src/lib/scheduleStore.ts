@@ -9,6 +9,7 @@
  */
 import PouchDB from "pouchdb-browser";
 import type { ScheduleItem, SlideContent } from "../types";
+import { SONG_ID_RE } from "./scheduleSync";
 
 const DB_NAME = "wtp-schedule";
 const DOC_ID = "current";
@@ -61,6 +62,8 @@ function cleanItems(v: unknown): ScheduleItem[] | null {
       notes: str(o.notes, 20_000),
       // 2026-11-05: id of the Media-tab picture / video used as background
       bgMediaId: typeof o.bgMediaId === "string" && /^(img|vid)-[\w-]{1,70}$/.test(o.bgMediaId) ? o.bgMediaId : undefined,
+      // 2026-11-07: My Song this item follows (lib/scheduleSync.ts)
+      songId: type === "song" && typeof o.songId === "string" && SONG_ID_RE.test(o.songId) ? o.songId : undefined,
     };
     out.push(item);
   }

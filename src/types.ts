@@ -113,6 +113,11 @@ export interface ScheduleItem {
    * and the video itself is played from this browser's media database.
    */
   bgMediaId?: string;
+  /**
+   * 2026-11-07: My Song this item came from ("user-…"). Edits to that song update the item's
+   * slides + title (lib/scheduleSync.ts). Missing = a copy that doesn't follow the song.
+   */
+  songId?: string;
 }
 
 export interface LiveState {
