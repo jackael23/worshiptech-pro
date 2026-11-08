@@ -9,7 +9,7 @@
  * 2026-11-06 (b): a My Song can have its own background; Add / double-click puts it on the schedule item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon, Presentation } from "lucide-react";
 import { SongItem } from "../types";
 import { SAMPLE_SONGS, REFERENCE_SONGS, SONGSELECT_SEARCH_URL } from "../data/easyworshipData";
 import {
@@ -26,6 +26,7 @@ import { decodeTextFile, parseSongFile, parseSongFileForBulk, SONG_FILE_EXTENSIO
 import { SongEditorModal } from "./SongEditorModal";
 import { BulkAddModal } from "./BulkAddModal";
 import { BulkSong } from "../lib/bulkPaste";
+import { parsePptxForBulk } from "../lib/pptxSongImport";
 import { resolveSongBackground } from "../lib/songBackground";
 import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
 import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
@@ -58,6 +59,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pptInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [bulk, setBulk] = useState<{ mode: "paste" | "review"; songs?: BulkSong[]; note?: string } | null>(null);
   const [readingFolder, setReadingFolder] = useState(false);
@@ -147,12 +149,44 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     setNotice({ text: `Na-export ang ${mySongs.length} kanta.`, tone: "ok" });
   };
 
+  // 2026-11-08: PowerPoint files (.pptx) → one song each (the slides' text), shown in the Bulk Add preview first.
+  const isPptFile = (f: File) => /\.(pptx|ppt|pps)$/i.test(f.name);
+  const readPptFiles = async (pptFiles: File[]) => {
+    setReadingFolder(true);
+    const songs: BulkSong[] = [];
+    const warnings: string[] = [];
+    try {
+      for (const f of pptFiles) {
+        const name = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+        const r = await parsePptxForBulk(f, name);
+        songs.push(...r.songs);
+        warnings.push(...r.warnings);
+      }
+    } finally {
+      setReadingFolder(false);
+    }
+    return { songs, warnings };
+  };
+  const handlePptFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter(isPptFile);
+    e.target.value = "";
+    if (files.length === 0) {
+      setNotice({ text: "Piliin ang PowerPoint file (.pptx).", tone: "warn" });
+      return;
+    }
+    const { songs, warnings } = await readPptFiles(files);
+    const note = [`${files.length} PowerPoint ang nabasa — text ng bawat slide ang naging lyrics (title = pangalan ng file)`, ...warnings.slice(0, 3)].join(" · ");
+    setBulk({ mode: "review", songs, note: note + "." });
+  };
+
   // 2026-10-20: also accepts SongSelect (.txt / .usr / .bin) and ChordPro files, several at once.
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = ""; // allow choosing the same file again
     if (files.length === 0) return;
-    const songFiles = files.filter((f) => !f.name.toLowerCase().endsWith(".json"));
+    // 2026-11-08: PowerPoint files go to the preview (below); the rest is imported as before.
+    const pptFiles = files.filter(isPptFile);
+    const songFiles = files.filter((f) => !f.name.toLowerCase().endsWith(".json") && !isPptFile(f));
     if (songFiles.length > 0) {
       const drafts: SongDraft[] = [];
       const errors: string[] = [];
@@ -176,6 +210,12 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         tone: skipped ? "warn" : "ok",
       });
       if (files.length === songFiles.length) return;
+    }
+    if (pptFiles.length > 0) {
+      const { songs, warnings } = await readPptFiles(pptFiles);
+      const note = [`${pptFiles.length} PowerPoint ang nabasa — text ng bawat slide ang naging lyrics`, ...warnings.slice(0, 3)].join(" · ");
+      setBulk({ mode: "review", songs, note: note + "." });
+      if (files.length === pptFiles.length + songFiles.length) return;
     }
     const file = files.find((f) => f.name.toLowerCase().endsWith(".json"));
     if (!file) return;
@@ -228,13 +268,13 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     e.target.value = "";
     if (files.length === 0) return;
     const pathOf = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-    const isSongFile = (f: File) => SONG_FILE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
+    const isSongFile = (f: File) => SONG_FILE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)) || isPptFile(f);
     const songFiles = files
       .filter(isSongFile)
       .sort((a, b) => pathOf(a).localeCompare(pathOf(b), undefined, { numeric: true, sensitivity: "base" }));
     const otherCount = files.length - songFiles.length;
     if (songFiles.length === 0) {
-      setNotice({ text: `Walang lyrics file sa folder (${files.length} file, hindi .txt / SongSelect / ChordPro).`, tone: "warn" });
+      setNotice({ text: `Walang lyrics file sa folder (${files.length} file, hindi .txt / SongSelect / ChordPro / PowerPoint).`, tone: "warn" });
       return;
     }
     setReadingFolder(true);
@@ -242,6 +282,11 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     try {
       for (const f of songFiles.slice(0, MAX_FOLDER_FILES)) {
         const name = pathOf(f);
+        if (isPptFile(f)) {
+          const r = await parsePptxForBulk(f, name);
+          songs.push(...r.songs);
+          continue;
+        }
         if (f.size > MAX_SONG_FILE_BYTES) {
           songs.push({ line: 1, draft: { title: f.name, author: "", key: "", ccli: "", copyright: "", lyrics: "" }, slideCount: 0, error: "Masyadong malaki ang file (max 512 KB).", source: name });
           continue;
@@ -252,7 +297,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       setReadingFolder(false);
     }
     const notes: string[] = [`${songFiles.length} lyrics file ang nabasa`];
-    if (otherCount) notes.push(`${otherCount} ibang file ang nilaktawan (hindi .txt / SongSelect / ChordPro)`);
+    if (otherCount) notes.push(`${otherCount} ibang file ang nilaktawan (hindi .txt / SongSelect / ChordPro / PowerPoint)`);
     if (songFiles.length > MAX_FOLDER_FILES) notes.push(`max ${MAX_FOLDER_FILES} file lang bawat import`);
     setBulk({ mode: "review", songs, note: notes.join(" · ") + "." });
   };
@@ -300,6 +345,10 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           <ListPlus className="w-3.5 h-3.5" />
           Bulk Add
         </button>
+        <button onClick={() => pptInputRef.current?.click()} disabled={readingFolder} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40`} title="Import PowerPoint: lyrics na nasa .pptx — bawat slide ay slide ng kanta; may preview muna bago i-save">
+          <Presentation className="w-3.5 h-3.5" />
+          PPT
+        </button>
         <button onClick={() => folderInputRef.current?.click()} disabled={readingFolder} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40`} title="Import folder: lahat ng .txt / SongSelect / ChordPro sa isang folder (kasama ang subfolders); may preview muna">
           <FolderOpen className="w-3.5 h-3.5" />
           {readingFolder ? "Binabasa..." : "Folder"}
@@ -308,7 +357,8 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           <Download className="w-3.5 h-3.5" />
           Export
         </button>
-        <input ref={fileInputRef} type="file" multiple accept={[".json", ...SONG_FILE_EXTENSIONS].join(",")} className="hidden" onChange={handleImportFile} data-testid="import-input" />
+        <input ref={pptInputRef} type="file" multiple accept=".pptx,.ppt,.pps" className="hidden" onChange={handlePptFiles} data-testid="ppt-input" />
+        <input ref={fileInputRef} type="file" multiple accept={[".json", ".pptx", ...SONG_FILE_EXTENSIONS].join(",")} className="hidden" onChange={handleImportFile} data-testid="import-input" />
         <input
           ref={folderInputRef}
           type="file"
@@ -422,7 +472,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                             const s = mySongs.find((m) => m.id === song.id);
                             if (s) setEditor({ mode: "edit", id: s.id, initial: s });
                           }}
-                          className="p-2.5 lg:p-1 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-3"
+                          className="icon-btn icon-btn-edit"
                           title="Edit"
                           aria-label={`Edit ${song.title}`}
                         >
@@ -430,7 +480,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(song.id)}
-                          className="p-2.5 lg:p-1 rounded-md text-fg-subtle hover:text-live-text hover:bg-live-soft"
+                          className="icon-btn icon-btn-danger"
                           title="Delete"
                           aria-label={`Delete ${song.title}`}
                         >

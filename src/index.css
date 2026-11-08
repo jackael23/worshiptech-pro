@@ -359,3 +359,63 @@
     animation: none !important;
   }
 }
+
+
+/* ============================================================================
+   2026-11-08: mas visible ang buttons at ang mga hati (columns / rows), lalo na kapag may
+   animated scene o video sa likod (Appearance → Background).
+   - .icon-btn: Edit / Move up / Move down / Delete — laging kita, may border at kulay.
+   - Borders: 1px pa rin, bahagyang mas maliwanag lang (tokens sa dulo ng file).
+   ========================================================================== */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--c-line-strong);
+  background: var(--c-surface-3);
+  color: var(--c-fg);
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+  flex-shrink: 0;
+}
+.icon-btn:hover { border-color: var(--c-fg-muted); transform: translateY(-1px); }
+.icon-btn:active { transform: translateY(0); }
+.icon-btn svg { width: 1rem; height: 1rem; stroke-width: 2.25; }
+.icon-btn-edit { background: var(--c-accent-soft); border-color: var(--c-accent); color: var(--c-accent-text); }
+.icon-btn-edit:hover { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.icon-btn-move:hover { background: var(--c-surface-solid); }
+.icon-btn-danger { background: var(--c-live-soft); border-color: var(--c-live); color: var(--c-live-text); }
+.icon-btn-danger:hover { background: var(--c-live); color: #fff; border-color: var(--c-live); }
+.icon-btn-group { display: inline-flex; align-items: center; gap: 0.25rem; }
+/* ang tatlong mini-button ng arrow + delete ay may maliit na hati sa pagitan */
+.icon-btn-group > .icon-btn-danger { margin-left: 0.25rem; }
+@media (max-width: 1023.98px) {
+  .icon-btn { width: 2.5rem; height: 2.5rem; }
+}
+
+/* Borders: bumalik sa 1px na dati, bahagya lang pinaliwanag ang kulay (2026-11-08). */
+:root,
+[data-theme="light"] {
+  --c-line: #c4c4cb;
+  --c-line-strong: #adadb6;
+}
+[data-theme="dark"] {
+  --c-line: #3d3d45;
+  --c-line-strong: #56565f;
+}
+/* may background: konting dagdag na linaw lang */
+[data-theme="dark"][data-appbg="on"] {
+  --c-line: #4a4a54;
+  --c-line-strong: #666672;
+  --c-surface: rgb(14 14 17 / 0.7);
+  --c-surface-2: rgb(21 21 25 / 0.66);
+  --c-surface-3: rgb(32 32 38 / 0.86);
+}
+[data-theme="light"][data-appbg="on"] {
+  --c-line: #b0b0ba;
+  --c-line-strong: #92929d;
+  --c-surface: rgb(255 255 255 / 0.74);
+  --c-surface-2: rgb(250 250 250 / 0.68);
+  --c-surface-3: rgb(244 244 245 / 0.88);
+}

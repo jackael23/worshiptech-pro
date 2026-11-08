@@ -1114,7 +1114,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     goLiveAt(item, 0);
                   }}
                   title="Double-click = LIVE (unang slide)"
-                  className={`group flex min-h-[48px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-11 ${
+                  className={`group flex min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-11 ${
                     isSelected ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent/50" : "text-fg-muted hover:bg-surface-3 hover:text-fg"
                   }`}
                 >
@@ -1122,7 +1122,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   <TypeIcon className={`h-4 w-4 shrink-0 ${isSelected ? "text-accent-text" : "text-fg-subtle"}`} />
                   <span className={`min-w-0 flex-1 truncate ${isSelected ? "font-medium" : ""}`}>{cleanTitle(item.title)}</span>
                   {isItemLive && <span className="badge badge-live px-1 py-0 leading-4">LIVE</span>}
-                  <div className={`flex shrink-0 items-center ${isSelected ? "" : "lg:opacity-0 lg:group-hover:opacity-100"}`}>
+                  <div className="icon-btn-group">
                     {item.type === "song" && (
                       <button
                         onClick={(e) => {
@@ -1130,12 +1130,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                           openSongEdit(item);
                         }}
                         onDoubleClick={(e) => e.stopPropagation()}
-                        className="touch-44 grid place-items-center rounded p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg lg:min-h-0 lg:min-w-0"
+                        className="icon-btn icon-btn-edit"
                         title="Edit lyrics"
                         aria-label={`Edit lyrics: ${cleanTitle(item.title)}`}
                         data-testid="schedule-edit"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil />
                       </button>
                     )}
                     <button
@@ -1143,33 +1143,33 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                         e.stopPropagation();
                         handleMoveScheduleItem(idx, "up");
                       }}
-                      className="touch-44 grid place-items-center rounded p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg lg:min-h-0 lg:min-w-0"
+                      className="icon-btn icon-btn-move"
                       title="Move up"
                       aria-label={`Move ${cleanTitle(item.title)} up`}
                     >
-                      <MoveUp className="h-3.5 w-3.5" />
+                      <MoveUp />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleMoveScheduleItem(idx, "down");
                       }}
-                      className="touch-44 grid place-items-center rounded p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg lg:min-h-0 lg:min-w-0"
+                      className="icon-btn icon-btn-move"
                       title="Move down"
                       aria-label={`Move ${cleanTitle(item.title)} down`}
                     >
-                      <MoveDown className="h-3.5 w-3.5" />
+                      <MoveDown />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteScheduleItem(idx);
                       }}
-                      className="touch-44 grid place-items-center rounded p-1 text-fg-subtle hover:bg-live-soft hover:text-live-text lg:min-h-0 lg:min-w-0"
+                      className="icon-btn icon-btn-danger"
                       title="Remove"
                       aria-label={`Remove ${cleanTitle(item.title)}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 />
                     </button>
                   </div>
                 </div>
