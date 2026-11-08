@@ -22,6 +22,10 @@
  * ran in every tab. Now the newest tab takes over; snapshots from other tabs are refused (409),
  * commands go to the active tab only, and the other tabs are told so (they show a warning).
  * Header X-Host-Id = the id the tab got in its "role" message on host-events.
+ *
+ * 2026-11-08 (Mira): phones can change the schedule (add song / remove / move) and use the Bible.
+ *    POST /api/remote/host-library  song titles + Bibles (no lyrics) → phones; kept for phones that connect later
+ *    POST /api/remote/host-lookup   answer to a phone's Bible lookup → phones (they match it by reqId)
  */
 import express, { Express, Request, Response } from "express";
 import crypto from "crypto";
@@ -34,16 +38,27 @@ const RL = {
   MAX_HOSTS: 4, // laptop tabs with the Simulator open
   CMD_PER_SEC: 20, // commands per phone per second
   STATE_BODY: "3mb", // snapshot (includes small slide pictures)
+  LIBRARY_BODY: "2mb", // 2026-11-08: song titles (up to 5000) + Bible names
+  LOOKUP_BODY: "512kb", // 2026-11-08: one Bible chapter (longest: Psalm 119)
   CMD_BODY: "4kb",
   ALERT_MAX: 200,
   HEARTBEAT_MS: 15000,
 };
 
-const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert"] as const;
+const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "add-song", "remove", "move", "bible-lookup", "add-verses"] as const;
 type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
-  | { type: "alert"; text: string; show: boolean };
+  | { type: "alert"; text: string; show: boolean }
+  | { type: "add-song"; songId: string; live: boolean }
+  | { type: "remove"; itemId: string }
+  | { type: "move"; itemId: string; dir: "up" | "down" }
+  | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
+  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean };
+
+/** 2026-11-08: ids from the app (songs "song-1" / "user-…", schedule "sched-…", Bibles "KJV"). */
+const ID_RE = /^[\w.:-]{1,100}$/;
+const intIn = (v: unknown, min: number, max: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : null);
 
 function isLocal(req: Request): boolean {
   const a = req.socket.remoteAddress || "";
@@ -80,6 +95,37 @@ function cleanCmd(raw: unknown): RemoteCmd | null {
     if (typeof c.text !== "string") return null;
     return { type, text: c.text.slice(0, RL.ALERT_MAX), show: c.show === true };
   }
+  // 2026-11-08 (Mira): schedule + Bible commands
+  if (type === "add-song") {
+    if (typeof c.songId !== "string" || !ID_RE.test(c.songId)) return null;
+    return { type, songId: c.songId, live: c.live === true };
+  }
+  if (type === "remove") {
+    if (typeof c.itemId !== "string" || !ID_RE.test(c.itemId)) return null;
+    return { type, itemId: c.itemId };
+  }
+  if (type === "move") {
+    if (typeof c.itemId !== "string" || !ID_RE.test(c.itemId) || (c.dir !== "up" && c.dir !== "down")) return null;
+    return { type, itemId: c.itemId, dir: c.dir };
+  }
+  if (type === "bible-lookup") {
+    if (typeof c.reqId !== "string" || !/^[\w-]{1,40}$/.test(c.reqId)) return null;
+    if (typeof c.bibleId !== "string" || !ID_RE.test(c.bibleId)) return null;
+    if (typeof c.ref === "string" && c.ref.trim()) return { type, reqId: c.reqId, bibleId: c.bibleId, ref: c.ref.slice(0, 60) };
+    const book = intIn(c.book, 0, 65);
+    const chapter = intIn(c.chapter, 1, 150);
+    if (book === null || chapter === null) return null;
+    return { type, reqId: c.reqId, bibleId: c.bibleId, book, chapter };
+  }
+  if (type === "add-verses") {
+    if (typeof c.bibleId !== "string" || !ID_RE.test(c.bibleId)) return null;
+    const book = intIn(c.book, 0, 65);
+    const chapter = intIn(c.chapter, 1, 150);
+    if (book === null || chapter === null || !Array.isArray(c.verses) || c.verses.length === 0 || c.verses.length > 200) return null;
+    const verses = c.verses.map((v) => intIn(v, 1, 200));
+    if (verses.some((v) => v === null)) return null;
+    return { type, bibleId: c.bibleId, book, chapter, verses: verses as number[], live: c.live === true };
+  }
   return { type } as RemoteCmd;
 }
 
@@ -103,6 +149,7 @@ export function registerRemoteRoutes(app: Express, port: number) {
   const loginTries = new Map<string, { count: number; resetAt: number }>();
   const cmdRate = new Map<string, { count: number; at: number }>();
   let lastState = ""; // last snapshot (JSON), sent to phones when they connect
+  let lastLibrary = ""; // 2026-11-08: last song list + Bibles (JSON message), sent to phones when they connect
 
   const log = () => {
     console.log(`📱 Phone remote PIN: ${pin}`);
@@ -112,7 +159,10 @@ export function registerRemoteRoutes(app: Express, port: number) {
 
   const tellHosts = (data: unknown) => hosts.forEach((_id, h) => send(h, data));
   const setActive = (res: Response | null) => {
-    if (activeHost !== res) lastState = ""; // the new tab sends its own snapshot right away
+    if (activeHost !== res) {
+      lastState = ""; // the new tab sends its own snapshot right away
+      lastLibrary = ""; // …and its own library
+    }
     activeHost = res;
     hosts.forEach((id, h) => send(h, { type: "role", hostId: id, active: h === res }));
   };
@@ -189,6 +239,23 @@ export function registerRemoteRoutes(app: Express, port: number) {
     res.status(204).end();
   });
 
+  // 2026-11-08: song titles + Bibles for the phones' Library tab
+  app.post("/api/remote/host-library", localOnly, express.json({ limit: RL.LIBRARY_BODY }), (req, res) => {
+    if (!isActiveId(req)) return res.status(409).end();
+    if (!req.body || typeof req.body !== "object" || !Array.isArray(req.body.songs)) return res.status(400).end();
+    lastLibrary = JSON.stringify({ type: "library", library: req.body });
+    remotes.forEach((_t, r) => r.write(`data: ${lastLibrary}\n\n`));
+    res.status(204).end();
+  });
+
+  // 2026-11-08: answer to a Bible lookup (not kept — only the phones connected now need it)
+  app.post("/api/remote/host-lookup", localOnly, express.json({ limit: RL.LOOKUP_BODY }), (req, res) => {
+    if (!isActiveId(req)) return res.status(409).end();
+    if (!req.body || typeof req.body !== "object" || typeof req.body.reqId !== "string") return res.status(400).end();
+    tellRemotes({ type: "lookup", result: req.body });
+    res.status(204).end();
+  });
+
   // ----- remote (phone) -----
   app.post("/api/remote/login", express.json({ limit: "1kb" }), (req, res) => {
     const ip = req.socket.remoteAddress || "?";
@@ -227,6 +294,7 @@ export function registerRemoteRoutes(app: Express, port: number) {
     remotes.set(res, token);
     send(res, { type: "host", connected: hosts.size > 0 });
     if (lastState) res.write(`data: ${lastState}\n\n`);
+    if (lastLibrary) res.write(`data: ${lastLibrary}\n\n`);
     counts();
     req.on("close", () => {
       remotes.delete(res);

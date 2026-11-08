@@ -6,10 +6,19 @@
  *  - Unlabeled slides after a labeled one get "<label> (cont.)"; with no labels at all
  *    they are numbered "Slide 1", "Slide 2", ...
  * Pure function (no DOM / storage) so it can be tested on its own.
+ *
+ * 2026-11-08 (Mira): chords. "[G]Amazing [C]grace" → text = "Amazing grace" (projector),
+ * chords = the lines as typed (Stage screen). A chord-only line ("[G] [C] [D]") is left out of the
+ * text; a block of only chord lines (an intro) goes in front of the next slide's chords, with its label
+ * as "{c: Intro}". Songs without chords give exactly the same slides as before (no `chords` field).
  */
+import { COMMENT_RE, hasChords, stripChords } from "./chords";
+
 export interface ParsedSlide {
   label: string;
   text: string;
+  /** 2026-11-08: the slide's lines with [chords] (only when it has any). */
+  chords?: string;
 }
 
 export const MAX_SLIDES = 100;
@@ -56,9 +65,24 @@ export function parseLyricsWithRanges(raw: string): ParsedSlideRange[] {
   let block: string[] = [];
   let blockStart = 0;
   let blockEnd = 0;
+  // 2026-11-08: lines as typed (with chords), and chord-only lines waiting for the next slide
+  let rawBlock: string[] = [];
+  let pending: string[] = [];
 
   const flush = () => {
-    if (block.length === 0) return;
+    if (block.length === 0) {
+      // chord-only block (e.g. intro): keep its chords for the next slide
+      if (rawBlock.length > 0) {
+        if (label && !labelUsed) pending.push(`{c: ${label}}`);
+        pending.push(...rawBlock);
+        rawBlock = [];
+      }
+      return;
+    }
+    const chordLines = [...pending, ...rawBlock];
+    const chords = chordLines.some((l) => hasChords(l)) ? chordLines.join("\n") : undefined;
+    pending = [];
+    rawBlock = [];
     let slideLabel: string;
     if (label) {
       slideLabel = labelUsed ? `${label} (cont.)` : label;
@@ -66,7 +90,7 @@ export function parseLyricsWithRanges(raw: string): ParsedSlideRange[] {
     } else {
       slideLabel = `Slide ${slides.length + 1}`;
     }
-    slides.push({ label: slideLabel, text: block.join("\n"), start: blockStart, end: blockEnd });
+    slides.push({ label: slideLabel, text: block.join("\n"), ...(chords ? { chords } : {}), start: blockStart, end: blockEnd });
     block = [];
   };
 
@@ -86,9 +110,22 @@ export function parseLyricsWithRanges(raw: string): ParsedSlideRange[] {
       labelUsed = false;
       continue;
     }
-    if (block.length === 0) blockStart = lineStart;
-    block.push(line);
+    // 2026-11-08: "{c: …}" = label of a chord-only intro (written by slidesToLyrics; also ChordPro comments)
+    if (COMMENT_RE.test(line)) {
+      if (block.length === 0 && rawBlock.length === 0) {
+        flush();
+        const name = line.match(COMMENT_RE)![1];
+        if (name) label = asSectionLabel(name) ?? name;
+        labelUsed = false;
+      }
+      continue;
+    }
+    const lyric = hasChords(line) ? stripChords(line) : line;
+    if (block.length === 0 && rawBlock.length === 0) blockStart = lineStart;
+    rawBlock.push(line);
     blockEnd = lineStart + rawLine.length;
+    if (!lyric) continue; // chord-only line: Stage screen only
+    block.push(lyric);
     if (slides.length >= MAX_SLIDES) break;
   }
   flush();
@@ -97,5 +134,6 @@ export function parseLyricsWithRanges(raw: string): ParsedSlideRange[] {
 
 export function parseLyrics(raw: string): ParsedSlide[] {
   // 2026-11-06: same rules as before, now shared with parseLyricsWithRanges.
-  return parseLyricsWithRanges(raw).map(({ label, text }) => ({ label, text }));
+  // 2026-11-08: + chords (only present when the slide has any)
+  return parseLyricsWithRanges(raw).map(({ label, text, chords }) => (chords ? { label, text, chords } : { label, text }));
 }

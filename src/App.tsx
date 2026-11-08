@@ -4,7 +4,9 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Header, MobileNav, AppTab, Theme } from "./components/Header";
+import { Header, MobileNav, AppTab } from "./components/Header";
+import { AppBackdrop } from "./components/AppBackdrop";
+import { Appearance, applyAppearance, loadAppearance, resolveMode, saveAppearance, systemPrefersDark } from "./lib/appearance";
 import { ChatAssistant } from "./components/ChatAssistant";
 import { WorkflowCanvasSimulator } from "./components/WorkflowCanvasSimulator";
 import { VisualGuidesDeck } from "./components/VisualGuidesDeck";
@@ -14,34 +16,36 @@ import { SAMPLE_SONGS } from "./data/easyworshipData";
 import { openLiveChannel, LiveMessage, OUTPUT_TIMEOUT_MS } from "./lib/liveChannel";
 import { useLogoFrame, withLogo } from "./lib/logoStore";
 
-// 2026-10-28 (Jarvis): theme (dark by default) — saved in this browser; index.html applies it before first paint.
-const THEME_KEY = "wtp-theme";
-function readTheme(): Theme {
-  try {
-    const t = localStorage.getItem(THEME_KEY);
-    if (t === "light" || t === "dark") return t;
-  } catch {
-    /* storage blocked */
-  }
-  return "dark";
-}
 
 export default function App() {
   const [version, setVersion] = useState<EasyWorshipVersion>("EasyWorship 7");
   const [language, setLanguage] = useState<SupportedLanguage>("Tagalog");
   // 2026-10-29 (Jarvis): Simulator opens first (sabi ni Jack); Chat is one click away.
   const [activeTab, setActiveTab] = useState<AppTab>("simulator");
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  // 2026-10-28 (Jarvis): theme saved in this browser; index.html applies it before first paint.
+  // 2026-11-07 (Mira): now "Appearance" — mode (dark/light/auto), accent, app background (lib/appearance.ts).
+  const [appearance, setAppearance] = useState<Appearance>(loadAppearance);
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  const resolvedMode = resolveMode(appearance.mode, systemDark);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#111113" : "#ffffff");
+    if (appearance.mode !== "auto") return;
+    let mq: MediaQueryList | null = null;
     try {
-      localStorage.setItem(THEME_KEY, theme);
+      mq = window.matchMedia("(prefers-color-scheme: dark)");
     } catch {
-      /* storage blocked */
+      return;
     }
-  }, [theme]);
+    const on = () => setSystemDark(mq!.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq!.removeEventListener("change", on);
+  }, [appearance.mode]);
+
+  useEffect(() => {
+    applyAppearance(appearance, resolvedMode);
+    saveAppearance(appearance, resolvedMode);
+  }, [appearance, resolvedMode]);
 
   const [liveState, setLiveState] = useState<LiveState>({
     isLive: true,
@@ -71,23 +75,34 @@ export default function App() {
   const logoRef = useRef(logo);
   logoRef.current = logo;
   const [outputCount, setOutputCount] = useState(0);
+  // 2026-11-08 (Mira): Stage screens (?output=stage) are counted apart from projectors
+  const [stageCount, setStageCount] = useState(0);
   const chRef = useRef<ReturnType<typeof openLiveChannel>>(null);
 
   useEffect(() => {
     const seen = new Map<string, number>();
+    const stages = new Set<string>(); // ids in `seen` that are Stage screens
+    const recount = () => {
+      let st = 0;
+      for (const id of seen.keys()) if (stages.has(id)) st++;
+      setOutputCount(seen.size - st);
+      setStageCount(st);
+    };
     const mountedAt = Date.now();
     const ch = openLiveChannel((m: LiveMessage) => {
       if (m.type === "output-hello" || m.type === "ping") {
         const isNew = !seen.has(m.id);
         seen.set(m.id, Date.now());
-        setOutputCount(seen.size);
+        if (m.kind === "stage") stages.add(m.id);
+        recount();
         if (m.type === "output-hello" || isNew) ch?.post({ type: "frame", state: withLogo(liveRef.current, logoRef.current) });
       } else if (m.type === "bye") {
         seen.delete(m.id);
-        setOutputCount(seen.size);
+        stages.delete(m.id);
+        recount();
       } else if (m.type === "frame-from-output") {
         seen.set(m.id, Date.now());
-        setOutputCount(seen.size);
+        recount();
         // after a reload, keep what the projector already shows (only if nothing was changed here yet)
         if (liveRef.current === initialLiveRef.current && Date.now() - mountedAt < 5000) setLiveState(m.state);
       } else if (m.type === "key") {
@@ -99,8 +114,12 @@ export default function App() {
     ch?.post({ type: "app-hello" });
     const sweep = setInterval(() => {
       const now = Date.now();
-      for (const [id, t] of seen) if (now - t > OUTPUT_TIMEOUT_MS) seen.delete(id);
-      setOutputCount(seen.size);
+      for (const [id, t] of seen)
+        if (now - t > OUTPUT_TIMEOUT_MS) {
+          seen.delete(id);
+          stages.delete(id);
+        }
+      recount();
     }, 2000);
     return () => {
       clearInterval(sweep);
@@ -125,7 +144,9 @@ export default function App() {
   return (
     // 2026-10-20 (Jarvis): app fills the screen (100dvh); only <main> scrolls.
     // 2026-10-28: design-system shell — app bar on top, bottom nav on phones.
-    <div className="h-dvh overflow-hidden bg-canvas text-fg flex flex-col font-sans">
+    // 2026-11-07: "isolate" = own stacking layer, so the -z-10 backdrop sits above <body>'s color but under the panels
+    <div className={`isolate h-dvh overflow-hidden text-fg flex flex-col font-sans ${appearance.bg.id ? "" : "bg-canvas"}`}>
+      <AppBackdrop bg={appearance.bg} motion={appearance.motion} />
       <Header
         version={version}
         setVersion={setVersion}
@@ -133,8 +154,8 @@ export default function App() {
         setLanguage={setLanguage}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        appearance={appearance}
+        onAppearanceChange={setAppearance}
       />
 
       <main className="flex-1 min-h-0 overflow-y-auto w-full">
@@ -148,7 +169,7 @@ export default function App() {
           )}
 
           {activeTab === "simulator" && (
-            <WorkflowCanvasSimulator version={version} liveState={liveState} setLiveState={setLiveState} onAskAssistant={handleAskAssistant} outputCount={outputCount} />
+            <WorkflowCanvasSimulator version={version} liveState={liveState} setLiveState={setLiveState} onAskAssistant={handleAskAssistant} outputCount={outputCount} stageCount={stageCount} />
           )}
 
           {activeTab === "guides" && (

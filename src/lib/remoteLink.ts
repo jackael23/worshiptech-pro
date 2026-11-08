@@ -5,11 +5,25 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LiveState, ScheduleItem, ResolvedTextStyle, BackgroundSettings } from "../types";
+import type { BibleLookupResult } from "./bibleLookup";
 
 export type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
-  | { type: "alert"; text: string; show: boolean };
+  | { type: "alert"; text: string; show: boolean }
+  // 2026-11-08 (Mira): change the schedule from the phone + Bible verses (Library tab)
+  | { type: "add-song"; songId: string; live: boolean }
+  | { type: "remove"; itemId: string }
+  | { type: "move"; itemId: string; dir: "up" | "down" }
+  | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
+  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean };
+
+/** 2026-11-08: song titles + installed Bibles for the phone's Library tab (no lyrics — they stay on the laptop). */
+export interface RemoteLibrary {
+  songs: { id: string; title: string; author?: string; key?: string; chords: boolean; mine: boolean; slides: number }[];
+  bibles: { id: string; name: string; shortName: string; language: string }[];
+}
+export type { BibleLookupResult };
 
 export interface RemoteSlide {
   label: string;
@@ -92,6 +106,10 @@ export interface RemoteHost {
   /** false = another Simulator tab on this laptop is the one the phones follow. */
   active: boolean;
   publish: (snap: RemoteSnapshot) => void;
+  /** 2026-11-08: song list + Bibles for the phones (sent again when it changes or when this tab takes over). */
+  publishLibrary: (lib: RemoteLibrary) => void;
+  /** 2026-11-08: answer to a phone's Bible lookup. */
+  publishLookup: (res: BibleLookupResult) => void;
   newPin: () => Promise<void>;
   /** Makes this tab the one the phones follow. */
   takeOver: () => Promise<void>;
@@ -205,8 +223,38 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
     [availability],
   );
 
+  // 2026-11-08: library (titles only) — sent as its own message so the snapshot stays small
+  const lastLibrary = useRef<string>("");
+  const sendLibrary = useCallback(() => {
+    if (!lastLibrary.current || !activeRef.current) return;
+    fetch("/api/remote/host-library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Host-Id": hostIdRef.current },
+      body: lastLibrary.current,
+    }).catch(() => {});
+  }, []);
+  const publishLibrary = useCallback(
+    (lib: RemoteLibrary) => {
+      if (availability !== "ready") return;
+      const json = JSON.stringify(lib);
+      if (json === lastLibrary.current) return;
+      lastLibrary.current = json;
+      sendLibrary();
+    },
+    [availability, sendLibrary],
+  );
+  const publishLookup = useCallback((res: BibleLookupResult) => {
+    if (!activeRef.current) return;
+    fetch("/api/remote/host-lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Host-Id": hostIdRef.current },
+      body: JSON.stringify(res),
+    }).catch(() => {});
+  }, []);
+
   resendRef.current = () => {
     if (pending.current) publish(pending.current);
+    sendLibrary();
   };
 
   const newPin = useCallback(async () => {
@@ -227,5 +275,5 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
     }
   }, []);
 
-  return { availability, pin, urls, phones, active, publish, newPin, takeOver };
+  return { availability, pin, urls, phones, active, publish, publishLibrary, publishLookup, newPin, takeOver };
 }

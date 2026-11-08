@@ -36,6 +36,8 @@ function cleanSlide(raw: unknown): SlideContent | null {
     background: str(o.background, 40_000_000),
     textColor: str(o.textColor, 40),
     notes: str(o.notes, 20_000),
+    // 2026-11-08: chords for the Stage screen (dropped here before, so they vanished after a reload)
+    chords: str(o.chords, 20_000),
   };
 }
 
@@ -64,6 +66,8 @@ function cleanItems(v: unknown): ScheduleItem[] | null {
       bgMediaId: typeof o.bgMediaId === "string" && /^(img|vid)-[\w-]{1,70}$/.test(o.bgMediaId) ? o.bgMediaId : undefined,
       // 2026-11-07: My Song this item follows (lib/scheduleSync.ts)
       songId: type === "song" && typeof o.songId === "string" && SONG_ID_RE.test(o.songId) ? o.songId : undefined,
+      // 2026-11-08: song key for the Stage screen
+      songKey: str(o.songKey, 8),
     };
     out.push(item);
   }

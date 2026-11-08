@@ -263,3 +263,99 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================================
+   2026-11-07 (Mira) — Appearance: accent colors + app background (not the projector)
+   - <html data-accent="…">: blue = the original tokens above (no override).
+     Every accent keeps white button text readable (≈4.5:1+); *-text tints pass on their canvas.
+   - <html data-appbg="on">: panels become slightly see-through so the background shows in the gaps
+     and softly behind cards. Frosted glass (backdrop-filter) only on panels, header and phone nav.
+   ========================================================================== */
+[data-accent="purple"] { --c-accent: #7c3aed; --c-accent-hover: #6d28d9; --c-accent-soft: #f5f3ff; --c-accent-text: #6d28d9; }
+[data-accent="green"]  { --c-accent: #15803d; --c-accent-hover: #166534; --c-accent-soft: #f0fdf4; --c-accent-text: #166534; }
+[data-accent="teal"]   { --c-accent: #0f766e; --c-accent-hover: #115e59; --c-accent-soft: #f0fdfa; --c-accent-text: #115e59; }
+[data-accent="orange"] { --c-accent: #c2410c; --c-accent-hover: #9a3412; --c-accent-soft: #fff7ed; --c-accent-text: #9a3412; }
+[data-accent="gold"]   { --c-accent: #b45309; --c-accent-hover: #92400e; --c-accent-soft: #fffbeb; --c-accent-text: #92400e; }
+
+[data-theme="dark"][data-accent="purple"] { --c-accent: #7c3aed; --c-accent-hover: #6d28d9; --c-accent-soft: rgb(139 92 246 / 0.16); --c-accent-text: #c4b5fd; }
+[data-theme="dark"][data-accent="green"]  { --c-accent: #15803d; --c-accent-hover: #166534; --c-accent-soft: rgb(34 197 94 / 0.14); --c-accent-text: #86efac; }
+[data-theme="dark"][data-accent="teal"]   { --c-accent: #0f766e; --c-accent-hover: #115e59; --c-accent-soft: rgb(20 184 166 / 0.14); --c-accent-text: #5eead4; }
+[data-theme="dark"][data-accent="orange"] { --c-accent: #c2410c; --c-accent-hover: #9a3412; --c-accent-soft: rgb(249 115 22 / 0.14); --c-accent-text: #fdba74; }
+[data-theme="dark"][data-accent="gold"]   { --c-accent: #b45309; --c-accent-hover: #92400e; --c-accent-soft: rgb(245 158 11 / 0.14); --c-accent-text: #fcd34d; }
+
+:root,
+[data-theme="light"] {
+  --c-surface-solid: #ffffff; /* popovers stay solid even when panels are see-through */
+}
+[data-theme="dark"] {
+  --c-surface-solid: #111113;
+}
+
+[data-theme="light"][data-appbg="on"] {
+  --c-surface: rgb(255 255 255 / 0.66);
+  --c-surface-2: rgb(250 250 250 / 0.6);
+  --c-surface-3: rgb(244 244 245 / 0.8);
+}
+[data-theme="dark"][data-appbg="on"] {
+  --c-surface: rgb(17 17 19 / 0.6);
+  --c-surface-2: rgb(23 23 26 / 0.55);
+  --c-surface-3: rgb(31 31 35 / 0.78);
+}
+/* 2026-11-07 (b): dialogs (Add / Edit song, Bulk Add, Logo …) stay solid — only the main screen is see-through */
+[data-theme="light"][data-appbg="on"] [role="dialog"] {
+  --c-surface: #ffffff;
+  --c-surface-2: #fafafa;
+  --c-surface-3: #f4f4f5;
+}
+[data-theme="dark"][data-appbg="on"] [role="dialog"] {
+  --c-surface: #111113;
+  --c-surface-2: #17171a;
+  --c-surface-3: #1f1f23;
+}
+/* frosted glass on the big containers only (a few elements = light on the GPU); text stays crisp */
+[data-appbg="on"] .panel,
+[data-appbg="on"] header,
+[data-appbg="on"] nav[aria-label="Main mobile"] {
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+
+/* ---- background scene animations (transform / opacity only) ---- */
+@keyframes wtp-bg-twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes wtp-bg-drift { from { transform: translateX(0); } to { transform: translateX(-60px); } }
+@keyframes wtp-bg-shoot { 0%, 92% { opacity: 0; transform: translate(0, 0); } 94% { opacity: 1; } 100% { opacity: 0; transform: translate(-260px, 110px); } }
+@keyframes wtp-bg-aurora-a { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(12%, 8%) scale(1.15); } }
+@keyframes wtp-bg-aurora-b { 0%, 100% { transform: translate(0, 0) scale(1.1); } 50% { transform: translate(-14%, 6%) scale(0.95); } }
+@keyframes wtp-bg-aurora-c { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(8%, -12%) scale(1.2); } }
+@keyframes wtp-bg-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(30px, -60px); } }
+@keyframes wtp-bg-wave { from { transform: translateX(0); } to { transform: translateX(-1600px); } }
+@keyframes wtp-bg-glow { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
+@keyframes wtp-bg-cloud { from { transform: translateX(-120px); } to { transform: translateX(120px); } }
+@keyframes wtp-bg-shimmer { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.9; } }
+
+.app-backdrop .wtp-twinkle { animation: wtp-bg-twinkle 4s ease-in-out infinite; }
+.app-backdrop .wtp-drift-slow { animation: wtp-bg-drift 90s linear infinite alternate; }
+.app-backdrop .wtp-shooting { opacity: 0; animation: wtp-bg-shoot 11s ease-in infinite; }
+.app-backdrop .wtp-aurora-a { animation: wtp-bg-aurora-a 22s ease-in-out infinite; }
+.app-backdrop .wtp-aurora-b { animation: wtp-bg-aurora-b 28s ease-in-out infinite; }
+.app-backdrop .wtp-aurora-c { animation: wtp-bg-aurora-c 34s ease-in-out infinite; }
+.app-backdrop .wtp-float { animation: wtp-bg-float 24s ease-in-out infinite; }
+.app-backdrop .wtp-wave-slow { animation: wtp-bg-wave 60s linear infinite; }
+.app-backdrop .wtp-wave-mid { animation: wtp-bg-wave 40s linear infinite; }
+.app-backdrop .wtp-wave-fast { animation: wtp-bg-wave 26s linear infinite; }
+.app-backdrop .wtp-glow { animation: wtp-bg-glow 7s ease-in-out infinite; }
+.app-backdrop .wtp-cloud { animation: wtp-bg-cloud 50s ease-in-out infinite alternate; }
+.app-backdrop .wtp-mist { animation: wtp-bg-cloud 45s ease-in-out infinite alternate; }
+.app-backdrop .wtp-mist-rev { animation: wtp-bg-cloud 55s ease-in-out infinite alternate-reverse; }
+.app-backdrop .wtp-shimmer { animation: wtp-bg-shimmer 3.2s ease-in-out infinite; }
+
+/* "Galaw: off" in Appearance, or Windows "reduce motion": scenes hold still */
+[data-motion="off"] .app-backdrop *,
+[data-motion="off"] .app-backdrop *::before {
+  animation-play-state: paused !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-backdrop * {
+    animation: none !important;
+  }
+}

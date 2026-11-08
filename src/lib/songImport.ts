@@ -3,12 +3,14 @@
  * own licence) — or any ChordPro file — and turns them into My Songs drafts.
  *  - SongSelect "Lyrics" text download (.txt)
  *  - SongSelect USR / .bin
- *  - ChordPro (.cho, .chordpro, .chopro, .pro) — chords are removed, only lyrics are kept
+ *  - ChordPro (.cho, .chordpro, .chopro, .pro) — 2026-11-08: chords are KEPT inline ("[G]Amazing") for the
+ *    Stage screen; the projector still shows lyrics only (lyricsParser strips them)
  * Pure functions (no DOM) so they can be tested on their own. Lyrics never leave the browser.
  */
 import { SongDraft } from "./mySongsStore";
 import { asSectionLabel, parseLyrics } from "./lyricsParser";
 import { BulkSong, parseBulkText } from "./bulkPaste";
+import { isChord } from "./chords";
 
 export const SONG_FILE_EXTENSIONS = [".txt", ".usr", ".bin", ".cho", ".chordpro", ".chopro", ".pro", ".crd"];
 export const MAX_SONG_FILE_BYTES = 512 * 1024;
@@ -189,10 +191,11 @@ export function parseChordPro(text: string): SongDraft | null {
       start(t);
       continue;
     }
-    const lyric = t.replace(/\[[^\]]*\]/g, "").replace(/\s{2,}/g, " ").trim();
-    if (!lyric) continue; // chord-only line
+    // 2026-11-08: keep [chords]; other brackets (e.g. [x2]) are still removed as before
+    const line = t.replace(/\[[^\]]*\]/g, (b) => (isChord(b.slice(1, -1)) ? b : "")).replace(/\s{2,}/g, " ").trim();
+    if (!line) continue;
     if (!cur) start("");
-    cur!.text += (cur!.text ? "\n" : "") + lyric;
+    cur!.text += (cur!.text ? "\n" : "") + line;
   }
   const lyrics = buildLyrics(sections);
   if (!meta.title || !lyrics) return null;

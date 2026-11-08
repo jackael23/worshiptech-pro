@@ -12,6 +12,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X, Save, Info, Image as ImageIcon, Rows3 } from "lucide-react";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
+import { ChordSheet } from "./ChordSheet";
 import { MY_SONGS_LIMITS, SongDraft } from "../lib/mySongsStore";
 import { sampleBackground } from "../lib/songBackground";
 import { SongPreview } from "./SongPreview";
@@ -50,6 +51,9 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
   const lyricsRef = useRef<HTMLTextAreaElement>(null);
 
   const slides = useMemo(() => parseLyricsWithRanges(lyrics), [lyrics]);
+  // 2026-11-08 (Mira): chords — preview as the projector shows it, or as musicians see it (Stage screen)
+  const hasAnyChords = slides.some((s) => s.chords);
+  const [chordView, setChordView] = useState(false);
   const [picked, setPicked] = useState(0);
   const titleError = !title.trim() ? "Kailangan ang title." : "";
   const lyricsError = slides.length === 0 ? "Mag-paste ng lyrics (blank line = bagong slide)." : "";
@@ -161,11 +165,11 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
                 maxLength={MY_SONGS_LIMITS.MAX_LYRICS}
                 spellCheck={false}
                 className={`${inputCls} flex-1 min-h-[18rem] font-mono text-sm leading-relaxed resize-none`}
-                placeholder={"Verse 1\nUnang linya...\nIkalawang linya...\n\nChorus\nLinya ng chorus...\n\n(blank line = bagong slide)"}
+                placeholder={"Verse 1\n[G]Unang [C]linya...\nIkalawang linya...\n\nChorus\nLinya ng chorus...\n\n(blank line = bagong slide, [G] = chord)"}
                 data-testid="lyrics-input"
               />
               <span className="flex justify-between gap-2 text-xs text-fg-subtle mt-0.5">
-                <span>{touched && lyricsError ? <span className="text-live-text">{lyricsError}</span> : "Blank line = bagong slide. \"Verse 1\", \"Chorus\", \"[Bridge]\" = label. I-click ang slide sa kanan para piliin ang mga linya nito."}</span>
+                <span>{touched && lyricsError ? <span className="text-live-text">{lyricsError}</span> : "Blank line = bagong slide. \"Verse 1\", \"Chorus\", \"[Bridge]\" = label. [G], [Am7], [D/F#] bago ang salita = chord (Stage screen lang, hindi sa projector). I-click ang slide sa kanan para piliin ang mga linya nito."}</span>
                 <span className="shrink-0">{lyrics.length}/{MY_SONGS_LIMITS.MAX_LYRICS}</span>
               </span>
             </label>
@@ -194,8 +198,37 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
               </div>
               )}
             </div>
+            {tab === "slides" && hasAnyChords && (
+              <div className="seg grid grid-cols-2 self-start" role="group" aria-label="Chords preview">
+                <button type="button" onClick={() => setChordView(false)} aria-pressed={!chordView} className="seg-item tap-target">
+                  Projector
+                </button>
+                <button type="button" onClick={() => setChordView(true)} aria-pressed={chordView} className="seg-item tap-target" data-testid="chord-view">
+                  Musicians (chords)
+                </button>
+              </div>
+            )}
             {tab === "slides" ? (
-              <SongPreview slides={slides} picked={picked} onPick={pickSlide} bgId={bg.bgId} bgSettings={bg.bgSettings} />
+              <SongPreview
+                slides={slides}
+                picked={picked}
+                onPick={pickSlide}
+                bgId={bg.bgId}
+                bgSettings={bg.bgSettings}
+                renderBig={
+                  hasAnyChords && chordView
+                    ? (s) => (
+                        <div className="aspect-video overflow-auto rounded-lg border border-line bg-black p-[3%] text-white [container-type:inline-size]">
+                          <div className="mb-[1cqw] font-mono text-[2.4cqw] text-zinc-400">
+                            {s.label}
+                            {songKey.trim() ? ` · Key ${songKey.trim()}` : ""}
+                          </div>
+                          <ChordSheet text={s.text} chords={s.chords} songKey={songKey.trim()} className="text-[4cqw] font-semibold" />
+                        </div>
+                      )
+                    : undefined
+                }
+              />
             ) : (
               <div className="flex flex-col gap-2 lg:min-h-0 lg:flex-1">
                 {/* smaller screen here, so the background choices below have room */}

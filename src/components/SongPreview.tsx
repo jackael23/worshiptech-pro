@@ -23,9 +23,11 @@ interface Props {
   emptyText?: string;
   /** false = big screen only. */
   thumbs?: boolean;
+  /** 2026-11-08: draws the big screen instead of the projector slide (Song editor's Musicians view). */
+  renderBig?: (slide: ParsedSlide) => React.ReactNode;
 }
 
-export const SongPreview: React.FC<Props> = ({ slides, picked, onPick, bgId, bgSettings, layout = "grid", emptyText, thumbs = true }) => {
+export const SongPreview: React.FC<Props> = ({ slides, picked, onPick, bgId, bgSettings, layout = "grid", emptyText, thumbs = true, renderBig }) => {
   const bg = useSongBackground(bgId);
   // Same text size + style as the projector (LIVE_TEXT_SCALE + the saved Text style), so the preview is true to life.
   const textStyle = useMemo(() => resolveTextStyle(loadTextStyle()), []);
@@ -37,7 +39,15 @@ export const SongPreview: React.FC<Props> = ({ slides, picked, onPick, bgId, bgS
   return (
     <div className={`flex flex-col gap-2 min-h-0 ${layout === "grid" && thumbs ? "flex-1" : ""}`}>
       {current ? (
-        <SlideScreen slide={current} background={css} bgSettings={settings} bgVideoId={bg.videoId} textScale={LIVE_TEXT_SCALE} textStyle={textStyle} className="rounded-lg border border-line shrink-0" ariaHidden />
+        // 2026-11-07 (Mira): editor with thumbnails on a short screen (e.g. 768px tall): the big slide gets
+        // narrower so one full row of thumbnails still fits under it (was cut in half). Tall screens: unchanged.
+        <div className={`w-full shrink-0 ${layout === "grid" && thumbs ? "mx-auto lg:max-w-[max(16rem,calc((92vh_-_470px)*16/9))]" : ""}`}>
+          {renderBig ? (
+            renderBig(current)
+          ) : (
+            <SlideScreen slide={current} background={css} bgSettings={settings} bgVideoId={bg.videoId} textScale={LIVE_TEXT_SCALE} textStyle={textStyle} className="rounded-lg border border-line shrink-0" ariaHidden />
+          )}
+        </div>
       ) : (
         <div className="aspect-video shrink-0 grid place-items-center rounded-lg border border-dashed border-line-strong bg-surface-2 text-xs text-fg-subtle p-4 text-center" style={bg.css ? { background: css } : undefined}>
           <span className="rounded bg-black/40 px-2 py-1 text-white/90">{emptyText || "Lalabas dito ang slide (16:9, gaya sa projector) habang nagta-type."}</span>

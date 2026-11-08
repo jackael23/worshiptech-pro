@@ -3,10 +3,14 @@
  *  - One compact row: brand · nav · EW version · language · theme toggle.
  *  - Phones: nav moves to a bottom bar (MobileNav) with 44px+ targets.
  *  - The simulated output status moved into the Simulator itself (it isn't a real connection).
+ * 2026-11-07 (Mira): the sun/moon toggle became an Appearance button (mode, accent, app background).
+ * 2026-11-07 (b): Full screen button (like F11) — Esc or the same button exits.
  */
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { EasyWorshipVersion, SupportedLanguage } from "../types";
-import { BookOpen, Layers, Keyboard, MessageSquare, Moon, Sun, MonitorPlay } from "lucide-react";
+import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize } from "lucide-react";
+import { AppearancePanel } from "./AppearancePanel";
+import type { Appearance } from "../lib/appearance";
 
 export type AppTab = "chat" | "simulator" | "guides" | "shortcuts";
 export type Theme = "dark" | "light";
@@ -29,8 +33,24 @@ interface HeaderProps {
   setLanguage: (l: SupportedLanguage) => void;
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
-  theme: Theme;
-  onToggleTheme: () => void;
+  appearance: Appearance;
+  onAppearanceChange: (a: Appearance) => void;
+}
+
+/** Full screen for the whole app (Fullscreen API). Hidden where the browser can't do it (e.g. iPhone Safari). */
+function useFullscreen() {
+  const supported = typeof document !== "undefined" && !!document.fullscreenEnabled && !!document.documentElement.requestFullscreen;
+  const [on, setOn] = useState(() => typeof document !== "undefined" && !!document.fullscreenElement);
+  useEffect(() => {
+    const sync = () => setOn(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void document.documentElement.requestFullscreen().catch(() => undefined);
+  };
+  return { supported, on, toggle };
 }
 
 const selectCls =
@@ -41,9 +61,11 @@ const chevron = {
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b8b94' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
 };
 
-export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, theme, onToggleTheme }) => {
+export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, appearance, onAppearanceChange }) => {
+  const [showAppearance, setShowAppearance] = useState(false);
+  const fs = useFullscreen();
   return (
-    <header className="z-50 shrink-0 border-b border-line bg-surface">
+    <header className="relative z-50 shrink-0 border-b border-line bg-surface">
       <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5">
         {/* Brand */}
         <div className="flex shrink-0 items-center gap-2.5">
@@ -99,16 +121,32 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
               </option>
             ))}
           </select>
+          {fs.supported && (
+            <button
+              type="button"
+              onClick={fs.toggle}
+              className="btn btn-ghost btn-icon tap-target"
+              title={fs.on ? "Lumabas sa full screen (Esc)" : "Full screen (parang F11)"}
+              aria-label={fs.on ? "Exit full screen" : "Full screen"}
+              aria-pressed={fs.on}
+            >
+              {fs.on ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </button>
+          )}
           <button
-            onClick={onToggleTheme}
+            type="button"
+            onClick={() => setShowAppearance((v) => !v)}
+            data-appearance-toggle
             className="btn btn-ghost btn-icon tap-target"
-            title={theme === "dark" ? "Light mode" : "Dark mode"}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title="Appearance: mode, kulay, background"
+            aria-label="Appearance"
+            aria-expanded={showAppearance}
           >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <Palette className="h-4 w-4" />
           </button>
         </div>
       </div>
+      {showAppearance && <AppearancePanel value={appearance} onChange={onAppearanceChange} onClose={() => setShowAppearance(false)} />}
     </header>
   );
 };
@@ -124,7 +162,8 @@ export const MobileNav: React.FC<{ activeTab: AppTab; setActiveTab: (t: AppTab) 
           onClick={() => setActiveTab(id)}
           aria-current={active ? "page" : undefined}
           className={`flex min-h-[56px] flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
-            active ? "text-accent" : "text-fg-subtle hover:text-fg"
+            // 2026-11-07: accent-text (not accent) so the 12px label stays readable with every accent color
+            active ? "text-accent-text" : "text-fg-subtle hover:text-fg"
           }`}
         >
           <Icon className="h-5 w-5" />

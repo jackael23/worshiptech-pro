@@ -22,6 +22,8 @@ export interface SongItem {
   slides: {
     label: string; // e.g. "Verse 1", "Chorus", "Bridge"
     text: string;
+    /** 2026-11-08: lines with [chords] for the Stage screen (lib/chords.ts). */
+    chords?: string;
   }[];
   defaultBackground?: string;
   /** 2026-10-20: sample = built-in PD hymn, user = My Songs (browser only), reference = title/author only, no lyrics. */
@@ -63,6 +65,8 @@ export interface SlideContent {
   textColor?: string;
   /** Speaker notes (shown on the Foldback / stage screen). */
   notes?: string;
+  /** 2026-11-08: lines with [chords] — Stage screen only, never the projector (lib/chords.ts). */
+  chords?: string;
 }
 
 /** 2026-10-29 (Jarvis): how slide text looks on the screens (see lib/textStyle.ts). */
@@ -118,6 +122,8 @@ export interface ScheduleItem {
    * slides + title (lib/scheduleSync.ts). Missing = a copy that doesn't follow the song.
    */
   songId?: string;
+  /** 2026-11-08: song key (e.g. "G") for the Stage screen. */
+  songKey?: string;
 }
 
 export interface LiveState {
@@ -135,6 +141,10 @@ export interface LiveState {
   currentSlideImage?: string;
   currentSlideTextColor?: string;
   currentSlideNotes?: string;
+  /** 2026-11-08: chords of the slide on air / the next slide, and the song key — Stage screen only. */
+  currentSlideChords?: string;
+  nextSlideChords?: string;
+  songKey?: string;
   /** 2026-10-29: text style of the slide on air (global or the item's own). */
   textStyle?: ResolvedTextStyle;
   /** 2026-10-29: dim / fit / blur of the background on air. */

@@ -17,11 +17,13 @@ import {
   Send,
   Layers,
   MonitorUp,
+  Music2,
   ScreenShare,
   Presentation as PresentationIcon,
   Smartphone,
   RefreshCw,
   Type as TypeIcon,
+  SwatchBook,
   X,
   Settings2,
   Pencil,
@@ -36,19 +38,21 @@ import {
   BackgroundSettings,
   SlideContent,
 } from "../types";
-import { INITIAL_SCHEDULE } from "../data/easyworshipData";
+import { INITIAL_SCHEDULE, SAMPLE_SONGS } from "../data/easyworshipData";
 import { getCachedSchedule, loadSchedule, saveSchedule, loadSelectedIndex, saveSelectedIndex } from "../lib/scheduleStore";
 import { SongLibrary } from "./SongLibrary";
 import { BibleLibrary, Passage } from "./BibleLibrary";
 import { PresentationLibrary } from "./PresentationLibrary";
 import { SlideScreen } from "./SlideScreen";
 import { LiveMainScreen } from "./LiveScreen";
-import { openOutputWindow, canUseSecondScreen } from "../lib/liveChannel";
+import { openOutputWindow, canUseSecondScreen, listScreens, loadScreenChoice, ScreenChoice, OutputKind } from "../lib/liveChannel";
 import type { StoredPresentation } from "../lib/presentationStore";
 import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary } from "./MediaLibrary";
+import { ThemePicker, ThemeScope } from "./ThemePicker";
+import { ItemBg, PresentationTheme, ThemeStore, findTheme, loadThemeStore, resolveThemeBg, saveThemeStore, themeFromItem } from "../lib/presentationThemes";
 import { isVideoId } from "../lib/mediaStore";
 import { useLogoFrame, withLogo } from "../lib/logoStore";
 import { LogoSettingsModal } from "./LogoSettingsModal";
@@ -57,6 +61,10 @@ import { ResizeHandle } from "./ResizeHandle";
 import { SongEditorModal } from "./SongEditorModal";
 import { loadSongsFromDb, reloadSongs, saveSongsDiff, watchSongs } from "../lib/songsDb";
 import type { StoredSong, SongDraft } from "../lib/mySongsStore";
+import { toSongItem } from "../lib/mySongsStore";
+import { listBibles, getBible, watchBibles, type WtpBible, type BibleMeta } from "../lib/bibleStore";
+import { lookupVerses, passageFor } from "../lib/bibleLookup";
+import type { RemoteLibrary } from "../lib/remoteLink";
 import { syncScheduleWithSongs, songSlides, retitle, slidesToLyrics, SONG_ID_RE } from "../lib/scheduleSync";
 
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
@@ -70,6 +78,8 @@ interface WorkflowCanvasSimulatorProps {
   onAskAssistant: (query: string) => void;
   /** 2026-10-28: number of projector output windows connected (?output=main). */
   outputCount?: number;
+  /** 2026-11-08: number of Stage screens connected (?output=stage). */
+  stageCount?: number;
 }
 
 export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = ({
@@ -78,6 +88,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   setLiveState,
   onAskAssistant,
   outputCount = 0,
+  stageCount = 0,
 }) => {
   // Simulator Local States
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTabType>("songs");
@@ -139,8 +150,20 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       const idx = Math.min(prev.activeSlideIndex, onAir.slides.length - 1);
       const slide = onAir.slides[idx];
       const nextSlideText = onAir.slides[idx + 1]?.text || onAir.slides[idx + 1]?.label || "";
-      if (idx === prev.activeSlideIndex && slide.label === prev.currentSlideLabel && slide.text === prev.currentSlideText && nextSlideText === (prev.nextSlideText ?? "")) return prev;
-      return { ...prev, activeSlideIndex: idx, currentSlideLabel: slide.label, currentSlideText: slide.text, nextSlideText };
+      // 2026-11-08: chords + key follow the edit too (Stage screen)
+      const chords = slide.chords;
+      const nextChords = onAir.slides[idx + 1]?.chords;
+      if (
+        idx === prev.activeSlideIndex &&
+        slide.label === prev.currentSlideLabel &&
+        slide.text === prev.currentSlideText &&
+        nextSlideText === (prev.nextSlideText ?? "") &&
+        chords === prev.currentSlideChords &&
+        nextChords === prev.nextSlideChords &&
+        onAir.songKey === prev.songKey
+      )
+        return prev;
+      return { ...prev, activeSlideIndex: idx, currentSlideLabel: slide.label, currentSlideText: slide.text, nextSlideText, currentSlideChords: chords, nextSlideChords: nextChords, songKey: onAir.songKey };
     });
   };
   /** Puts a changed schedule on screen + saves it + updates the live slide. */
@@ -149,8 +172,11 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     setScheduleItems(items);
     refreshLiveText(items);
   };
+  // 2026-11-08: bumps when My Songs change (the phone's Library list follows)
+  const [songsTick, setSongsTick] = useState(0);
   const applySongs = (songs: StoredSong[]) => {
     songsRef.current = songs;
+    setSongsTick((n) => n + 1);
     if (!scheduleLoaded.current) return; // the saved schedule isn't read yet — done after it loads
     const r = syncScheduleWithSongs(scheduleRef.current, songs);
     if (r.changed) commitSchedule(r.items);
@@ -232,8 +258,20 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   // 2026-10-20 (Jarvis): on phones/tablets (< lg) show one panel at a time instead of 3 squeezed panels.
   // 2026-10-28 (Jarvis): projector output window
   const [outputNotice, setOutputNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
-  const handleOpenOutput = async (secondScreen: boolean) => {
-    const r = await openOutputWindow(secondScreen);
+  // 2026-11-08 (Mira): + Stage screen (musicians, with chords) and picking the screen for each window
+  const handleOpenOutput = async (secondScreen: boolean, kind: OutputKind = "main", pickKey?: string) => {
+    const r = await openOutputWindow(secondScreen, kind, pickKey);
+    if (kind === "stage") {
+      const stageMsg: Record<typeof r, { text: string; tone: "ok" | "warn" }> = {
+        opened: { text: "Bukas na ang Stage screen. I-drag ito sa TV ng musicians, tapos i-click o Enter para fullscreen.", tone: "ok" },
+        "second-screen": { text: "Nasa napiling screen na ang Stage screen. Kung hindi pa fullscreen, i-click ito o pindutin ang Enter.", tone: "ok" },
+        "no-second-screen": { text: "Walang nakitang ibang screen — dito binuksan ang Stage screen. Ikabit ang TV at subukan ulit.", tone: "warn" },
+        denied: { text: "Hindi pinayagan ang 'window management', kaya dito binuksan. I-drag sa TV, tapos i-click o Enter para fullscreen.", tone: "warn" },
+        blocked: { text: "Na-block ng browser ang bagong window. Pindutin ulit ang button (o payagan ang pop-ups para sa site na ito).", tone: "warn" },
+      };
+      setOutputNotice(stageMsg[r]);
+      return;
+    }
     const msg: Record<typeof r, { text: string; tone: "ok" | "warn" }> = {
       opened: { text: "Bukas na ang output window. I-drag ito sa projector, tapos i-click ito o pindutin ang Enter para fullscreen.", tone: "ok" },
       "second-screen": { text: "Nasa second screen na ang output. Kung hindi pa fullscreen, pindutin ang Enter (o i-click ang projector).", tone: "ok" },
@@ -248,6 +286,14 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     const t = setTimeout(() => setOutputNotice(null), 8000);
     return () => clearTimeout(t);
   }, [outputNotice]);
+  // 2026-11-08: screens of this computer, for "Piliin ang screen" (null = list not opened)
+  const [screens, setScreens] = useState<ScreenChoice[] | null>(null);
+  const handleListScreens = async () => {
+    const r = await listScreens();
+    if (r === "denied") setOutputNotice({ text: "Kailangan ng permiso na 'window management' para makita ang mga screen. Payagan ito sa address bar, tapos subukan ulit.", tone: "warn" });
+    else if (r === "unsupported") setOutputNotice({ text: "Chrome o Edge lang ang nakakapili ng screen. I-drag na lang ang window sa tamang screen.", tone: "warn" });
+    else setScreens(r);
+  };
 
   const [mobilePanel, setMobilePanel] = useState<"library" | "schedule" | "live">("library");
   const panelVis = (p: "library" | "schedule" | "live") => (mobilePanel === p ? "flex" : "hidden") + " lg:flex";
@@ -355,6 +401,74 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     refreshLiveStyle(globalStyle, items);
   };
 
+  // 2026-11-07 (Mira): Presentation themes — text style + background in one click (lib/presentationThemes.ts).
+  const [themeStore, setThemeStore] = useState<ThemeStore>(loadThemeStore);
+  const updateThemeStore = (next: ThemeStore) => {
+    setThemeStore(next);
+    saveThemeStore(next);
+  };
+  /** Background of the default theme, for new songs / verses (null = keep the old behavior). */
+  const [defaultThemeBg, setDefaultThemeBg] = useState<ItemBg | null>(null);
+  useEffect(() => {
+    const t = findTheme(themeStore, themeStore.defaultId);
+    if (!t) return setDefaultThemeBg(null);
+    let alive = true;
+    resolveThemeBg(t).then((bg) => alive && setDefaultThemeBg(bg));
+    return () => {
+      alive = false;
+    };
+  }, [themeStore]);
+  const themeUndoRef = useRef<{ items: ScheduleItem[]; global: TextStyle; defaultId: string | null } | null>(null);
+  const [canUndoTheme, setCanUndoTheme] = useState(false);
+  const bgFields = (bg: ItemBg) => ({ background: bg.background, bgMediaId: bg.bgMediaId, bgSettings: bg.bgSettings });
+
+  const handleApplyTheme = async (theme: PresentationTheme, scope: ThemeScope): Promise<string | null> => {
+    const bg = await resolveThemeBg(theme);
+    if (!bg) return "Wala sa browser na ito ang larawan/video ng theme (na-delete o hindi pa nasi-sync).";
+    if (scope === "item") {
+      const target = currentScheduleItem;
+      if (!target) return "Pumili muna ng item sa Schedule.";
+      const items = scheduleItems.map((i) => (i.id === target.id ? { ...i, textStyle: { ...theme.textStyle }, ...bgFields(bg) } : i));
+      setScheduleItems(items);
+      refreshLiveStyle(globalStyle, items);
+      refreshLiveBackground(items);
+      setCanUndoTheme(false);
+      return null;
+    }
+    themeUndoRef.current = { items: scheduleItems, global: globalStyle, defaultId: themeStore.defaultId };
+    const nextGlobal = { ...theme.textStyle };
+    // every item takes the theme; PowerPoint slides keep their own background (slide.background wins)
+    const items = scheduleItems.map((i) => ({ ...i, textStyle: null, ...bgFields(bg) }));
+    setGlobalStyle(nextGlobal);
+    saveTextStyle(nextGlobal);
+    setScheduleItems(items);
+    refreshLiveStyle(nextGlobal, items);
+    refreshLiveBackground(items);
+    updateThemeStore({ ...themeStore, defaultId: theme.id });
+    setCanUndoTheme(true);
+    return null;
+  };
+  const handleUndoTheme = () => {
+    const u = themeUndoRef.current;
+    if (!u) return;
+    themeUndoRef.current = null;
+    setCanUndoTheme(false);
+    setGlobalStyle(u.global);
+    saveTextStyle(u.global);
+    setScheduleItems(u.items);
+    refreshLiveStyle(u.global, u.items);
+    refreshLiveBackground(u.items);
+    updateThemeStore({ ...themeStore, defaultId: u.defaultId });
+  };
+  const handleSaveTheme = (name: string) => {
+    const t = themeFromItem(name, styleFor(currentScheduleItem), currentScheduleItem);
+    updateThemeStore({ ...themeStore, custom: [...themeStore.custom, t] });
+  };
+  const handleRenameTheme = (id: string, name: string) =>
+    updateThemeStore({ ...themeStore, custom: themeStore.custom.map((t) => (t.id === id ? { ...t, name: name.trim().slice(0, 40) } : t)) });
+  const handleDeleteTheme = (id: string) =>
+    updateThemeStore({ defaultId: themeStore.defaultId === id ? null : themeStore.defaultId, custom: themeStore.custom.filter((t) => t.id !== id) });
+
   // Helper actions
   const handleAddSongToSchedule = (song: SongItem): ScheduleItem => {
     const newItem: ScheduleItem = {
@@ -364,11 +478,15 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       slides: song.slides,
       activeSlideIndex: 0,
       background: song.defaultBackground,
+      // 2026-11-07: default presentation theme's background, unless the My Song has its own
+      ...(defaultThemeBg && !song.bgMediaId && !song.bgId ? bgFields(defaultThemeBg) : {}),
       // 2026-11-06: My Song's own background (picture / video upload + dim / fit / blur)
       ...(song.bgMediaId ? { bgMediaId: song.bgMediaId } : {}),
       ...(song.bgId && song.bgSettings ? { bgSettings: song.bgSettings } : {}),
       // 2026-11-07: remember the My Song, so editing it updates this item (and the live screen)
       ...(song.source === "user" && SONG_ID_RE.test(song.id) ? { songId: song.id } : {}),
+      // 2026-11-08: key for the Stage screen
+      ...(song.key ? { songKey: song.key } : {}),
     };
     setScheduleItems((prev) => [...prev, newItem]);
     setSelectedScheduleIndex(scheduleItems.length);
@@ -392,6 +510,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       currentSlideLabel: slide.label,
       currentSlideText: slide.text,
       nextSlideText: item.slides[slideIdx + 1]?.text || item.slides[slideIdx + 1]?.label || "",
+      // 2026-11-08: Stage screen (musicians) — chords + key; the projector ignores these
+      currentSlideChords: slide.chords,
+      nextSlideChords: item.slides[slideIdx + 1]?.chords,
+      songKey: item.songKey,
       // 2026-10-28: PowerPoint slides carry their own background / picture / notes.
       backgroundMediaUrl: slide.background || item.background || "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
       currentSlideImage: slide.image,
@@ -419,6 +541,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       slides: p.slides,
       activeSlideIndex: 0,
       background: "linear-gradient(135deg, #0284c7 0%, #082f49 100%)",
+      // 2026-11-07: default presentation theme's background
+      ...(defaultThemeBg ? bgFields(defaultThemeBg) : {}),
     };
     setScheduleItems((prev) => [...prev, newItem]);
     setSelectedScheduleIndex(scheduleItems.length);
@@ -544,9 +668,102 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         return;
     }
   };
-  const remote = useRemoteHost(handleRemoteCmd);
+  // ---------- 2026-11-08 (Mira): phone changes the schedule + Bible (Library tab) ----------
+  /** Latest handlers, for commands that finish after an await (Bible loads from the database). */
+  const latest = useRef({ handleAddPassage, handleLivePassage });
+  latest.current = { handleAddPassage, handleLivePassage };
+  const bibleCache = useRef<WtpBible | null>(null);
+  const loadBibleFor = async (id: string): Promise<WtpBible | null> => {
+    if (bibleCache.current?.id === id) return bibleCache.current;
+    const b = await getBible(id).catch(() => null);
+    if (b) bibleCache.current = b;
+    return b;
+  };
+  const findSong = (id: string): SongItem | undefined => {
+    const sample = SAMPLE_SONGS.find((s) => s.id === id);
+    if (sample) return sample;
+    const mine = songsRef.current?.find((s) => s.id === id);
+    return mine ? toSongItem(mine) : undefined;
+  };
+  const handleRemoteScheduleCmd = (cmd: RemoteCmd): boolean => {
+    switch (cmd.type) {
+      case "add-song": {
+        const song = findSong(cmd.songId);
+        if (!song || song.slides.length === 0) return true;
+        const item = handleAddSongToSchedule(song);
+        if (cmd.live) goLiveAt(item, 0);
+        return true;
+      }
+      case "remove": {
+        const idx = scheduleItems.findIndex((i) => i.id === cmd.itemId);
+        if (idx >= 0) handleDeleteScheduleItem(idx);
+        return true;
+      }
+      case "move": {
+        const idx = scheduleItems.findIndex((i) => i.id === cmd.itemId);
+        if (idx >= 0) handleMoveScheduleItem(idx, cmd.dir);
+        return true;
+      }
+      case "bible-lookup":
+        loadBibleFor(cmd.bibleId).then((b) =>
+          remote.publishLookup(
+            b ? lookupVerses(b, { ref: cmd.ref, book: cmd.book, chapter: cmd.chapter }, cmd.reqId) : { reqId: cmd.reqId, ok: false, error: "Wala ang Bible na ito sa laptop." },
+          ),
+        );
+        return true;
+      case "add-verses":
+        loadBibleFor(cmd.bibleId).then((b) => {
+          const p = b && passageFor(b, cmd.book, cmd.chapter, cmd.verses);
+          if (!p) return;
+          if (cmd.live) latest.current.handleLivePassage(p);
+          else latest.current.handleAddPassage(p);
+        });
+        return true;
+      default:
+        return false;
+    }
+  };
+  const remote = useRemoteHost((cmd) => {
+    if (!handleRemoteScheduleCmd(cmd)) handleRemoteCmd(cmd);
+  });
+  // Library for the phones: song titles (Hymns + My Songs, no lyrics) + imported Bibles
+  const [bibleList, setBibleList] = useState<BibleMeta[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      listBibles()
+        .then(({ bibles }) => {
+          if (alive) setBibleList(bibles);
+          bibleCache.current = null; // a Bible may have been replaced
+        })
+        .catch(() => undefined);
+    load();
+    const stop = watchBibles(load);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, []);
+  useEffect(() => {
+    if (remote.availability !== "ready") return;
+    const toEntry = (s: SongItem, mine: boolean): RemoteLibrary["songs"][number] => ({
+      id: s.id,
+      title: s.title,
+      ...(s.author ? { author: s.author } : {}),
+      ...(s.key ? { key: s.key } : {}),
+      chords: s.slides.some((x) => x.chords),
+      mine,
+      slides: s.slides.length,
+    });
+    const mine = (songsRef.current ?? []).map((s) => toEntry(toSongItem(s), true));
+    remote.publishLibrary({
+      songs: [...mine, ...SAMPLE_SONGS.map((s) => toEntry(s, false))].filter((s) => s.slides > 0),
+      bibles: bibleList.map((b) => ({ id: b.id, name: b.name, shortName: b.shortName, language: b.language })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remote.availability, remote.publishLibrary, songsTick, bibleList]);
   // 2026-10-29: Output toolbar panels (one open at a time; X / Esc / same button closes)
-  const [tool, setTool] = useState<null | "projector" | "phone" | "style">(null);
+  const [tool, setTool] = useState<null | "projector" | "phone" | "style" | "theme">(null);
   // 2026-11-06: custom Logo screen (picture / video + title) — merged into what the screens show
   const logo = useLogoFrame();
   const shownLive = withLogo(liveState, logo);
@@ -610,22 +827,35 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       } else if (e.key === "PageDown") {
         e.preventDefault();
         handleGoLive();
-      } else if (e.key === "ArrowDown") {
+      } else if (e.key === "Enter" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+        // 2026-11-07 (Mira, hiling ni Jack): Enter = GO LIVE with the Preview slide (same as Page Down).
+        // Not when a button / link / checkbox has focus — there Enter means "press that control".
+        const t = e.target as HTMLElement | null;
+        if (e.defaultPrevented || t?.closest('button, a[href], [role="button"], [role="tab"], [role="option"], [role="separator"], input, summary')) return;
         e.preventDefault();
-        if (currentScheduleItem && selectedSlideIndex < currentScheduleItem.slides.length - 1) {
-          setSelectedSlideIndex((prev) => prev + 1);
+        handleGoLive();
+      } else if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) {
+        // a focused control that uses arrows itself (e.g. the panel resize handle) wins
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1;
+        // 2026-11-07 (Mira, hiling ni Jack): when something is on air, ↑/← = previous and ↓/→ = next
+        // LIVE slide (same as the phone remote's Prev/Next; Preview follows). Stops at the item's first/last slide.
+        const onAir = liveState.isLive ? scheduleItems.find((i) => i.id === liveState.activeScheduleItemId) : undefined;
+        if (onAir) {
+          liveAndSelect(onAir.id, liveState.activeSlideIndex + step);
+          return;
         }
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        if (selectedSlideIndex > 0) {
-          setSelectedSlideIndex((prev) => prev - 1);
+        // nothing on air: arrows only move the Preview selection (as before)
+        if (currentScheduleItem && selectedSlideIndex + step >= 0 && selectedSlideIndex + step < currentScheduleItem.slides.length) {
+          setSelectedSlideIndex((prev) => prev + step);
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentScheduleItem, selectedSlideIndex]);
+  }, [currentScheduleItem, selectedSlideIndex, liveState, scheduleItems]);
 
   // 2026-10-28 (Jarvis): redesign — titles are stored as "3. Song"; the list shows its own number.
   const cleanTitle = (t: string) => t.replace(/^\d+\.\s*/, "");
@@ -1015,11 +1245,14 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             side by side when the column is wide enough (like EasyWorship / ProPresenter). */}
         <section ref={outRef} className={`${panelVis("live")} @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
           <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
-            <span className="eyebrow mr-1">Output</span>
+            {/* 2026-11-07: label hidden on narrow columns so the 4th tool (Theme) + Main/Foldback/NDI still fit */}
+            <span className="eyebrow mr-1 hidden @[26rem]/out:inline">Output</span>
             {([
-              ["projector", "Projector output", "Projector", MonitorUp, outputCount > 0],
+              ["projector", "Projector output", "Projector", MonitorUp, outputCount > 0 || stageCount > 0],
               ["phone", "Phone remote", "Phone", Smartphone, remote.phones > 0],
               ["style", "Text style", "Text", TypeIcon, false],
+              // 2026-11-07: presentation themes (text style + background in one click)
+              ["theme", "Presentation themes", "Theme", SwatchBook, false],
             ] as const).map(([id, label, short, Icon, on]) => (
               <button
                 key={id}
@@ -1183,11 +1416,11 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                 <div
                   ref={popoverRef}
                   role="region"
-                  aria-label={tool === "projector" ? "Projector output" : tool === "phone" ? "Phone remote" : "Text style"}
+                  aria-label={tool === "projector" ? "Projector output" : tool === "phone" ? "Phone remote" : tool === "theme" ? "Presentation themes" : "Text style"}
                   className="scroll-mt-3 rounded-lg border border-line bg-surface-2 p-3"
                 >
                   <div className="mb-2.5 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-fg">{tool === "projector" ? "Projector output" : tool === "phone" ? "Phone remote" : "Text style"}</span>
+                    <span className="text-sm font-semibold text-fg">{tool === "projector" ? "Projector output" : tool === "phone" ? "Phone remote" : tool === "theme" ? "Presentation themes" : "Text style"}</span>
                     <button onClick={() => setTool(null)} className="btn btn-ghost btn-icon h-7 w-7" aria-label="Isara">
                       <X className="h-4 w-4" />
                     </button>
@@ -1211,6 +1444,67 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                         <span className={`h-1.5 w-1.5 rounded-full ${outputCount ? "bg-ok" : "bg-fg-subtle"}`} />
                         {outputCount ? `Projector connected${outputCount > 1 ? ` (${outputCount})` : ""}` : "No output window"}
                       </p>
+
+                      {/* 2026-11-08 (Mira): Stage screen — TV for musicians / worship leaders: lyrics with chords */}
+                      <div className="space-y-1.5 border-t border-line pt-2">
+                        <div className="text-xs font-semibold text-fg">Stage screen (musicians · chords)</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button onClick={() => handleOpenOutput(false, "stage")} className="btn btn-secondary" title="Lyrics na may chords + susunod na slide, para sa TV ng musicians" data-testid="open-stage">
+                            <Music2 className="h-3.5 w-3.5" />
+                            Open Stage screen
+                          </button>
+                          {canUseSecondScreen() && (
+                            <button onClick={() => handleOpenOutput(true, "stage")} className="btn btn-ghost" title="Chrome/Edge: ilagay agad sa ibang screen (hihingi ng permiso)">
+                              <ScreenShare className="h-3.5 w-3.5" />
+                              On other screen
+                            </button>
+                          )}
+                        </div>
+                        <p className={`inline-flex items-center gap-1.5 text-xs ${stageCount ? "text-fg" : "text-fg-subtle"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${stageCount ? "bg-ok" : "bg-fg-subtle"}`} />
+                          {stageCount ? `Stage screen connected${stageCount > 1 ? ` (${stageCount})` : ""}` : "No Stage screen"}
+                        </p>
+                        <p className="text-xs text-fg-subtle">Hindi nagba-black ang Stage screen kapag Black / Clear sa projector, para tuloy-tuloy ang musicians.</p>
+                      </div>
+
+                      {/* 2026-11-08: laptop + projector + TV → choose which screen gets which window (remembered) */}
+                      {canUseSecondScreen() && (
+                        <div className="space-y-1.5 border-t border-line pt-2">
+                          <button onClick={handleListScreens} className="btn btn-ghost" data-testid="pick-screens">
+                            <ScreenShare className="h-3.5 w-3.5" />
+                            Piliin ang screen
+                          </button>
+                          {screens && (
+                            <ul className="space-y-1">
+                              {screens.map((sc) => {
+                                const isMain = loadScreenChoice("main") === sc.key;
+                                const isStage = loadScreenChoice("stage") === sc.key;
+                                return (
+                                  <li key={sc.key} className="flex flex-wrap items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1.5 text-xs">
+                                    <span className="min-w-0 flex-1 truncate text-fg" title={sc.label}>
+                                      {sc.label} <span className="text-fg-subtle">· {sc.width}×{sc.height}{sc.isCurrent ? " · ito" : ""}</span>
+                                    </span>
+                                    <button
+                                      onClick={() => handleOpenOutput(true, "main", sc.key).then(() => setScreens((s) => (s ? [...s] : s)))}
+                                      className={`btn ${isMain ? "btn-primary" : "btn-ghost"} h-7 px-2 text-xs`}
+                                      aria-pressed={isMain}
+                                    >
+                                      Projector
+                                    </button>
+                                    <button
+                                      onClick={() => handleOpenOutput(true, "stage", sc.key).then(() => setScreens((s) => (s ? [...s] : s)))}
+                                      className={`btn ${isStage ? "btn-primary" : "btn-ghost"} h-7 px-2 text-xs`}
+                                      aria-pressed={isStage}
+                                    >
+                                      Stage
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                       {outputNotice && <p role="status" className={outputNotice.tone === "ok" ? "notice-ok" : "notice-warn"}>{outputNotice.text}</p>}
                     </div>
                   )}
@@ -1272,6 +1566,28 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                           <span className="font-mono">npm start</span>), hindi sa web.app na version.
                         </p>
                       )}
+                    </div>
+                  )}
+
+                  {tool === "theme" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-40 shrink-0 overflow-hidden rounded ring-1 ring-live/50" data-testid="theme-live-mini">
+                          <LiveMainScreen liveState={shownLive} fade={false} playVideo={false} />
+                        </div>
+                        <p className="text-xs text-fg-subtle">Live ngayon — makikita mo agad dito kapag ang item na naka-live ang pinalitan.</p>
+                      </div>
+                      <ThemePicker
+                        store={themeStore}
+                        currentItem={currentScheduleItem}
+                        itemLabel={currentScheduleItem ? cleanTitle(currentScheduleItem.title) : ""}
+                        onApply={handleApplyTheme}
+                        onSaveFromItem={handleSaveTheme}
+                        onRename={handleRenameTheme}
+                        onDelete={handleDeleteTheme}
+                        canUndo={canUndoTheme}
+                        onUndo={handleUndoTheme}
+                      />
                     </div>
                   )}
 

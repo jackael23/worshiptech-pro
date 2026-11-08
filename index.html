@@ -7,14 +7,24 @@
     <meta name="description" content="AI assistant at practice simulator para sa EasyWorship 7/6/2009: hotkeys, step-by-step guides, songs at buong Bible (Ang Biblia 1905, KJV)." />
     <meta name="theme-color" content="#111113" />
     <!-- 2026-10-28 (Jarvis): apply the saved theme before first paint (no white flash in dark mode) -->
+    <!-- 2026-11-07 (Mira): reads Appearance (mode incl. auto + accent + background); falls back to the old wtp-theme -->
     <script>
       (function () {
+        var el = document.documentElement;
         var t = "dark";
         try {
-          var s = localStorage.getItem("wtp-theme");
-          if (s === "light" || s === "dark") t = s;
+          var a = JSON.parse(localStorage.getItem("wtp-appearance-v1") || "null");
+          if (a && typeof a === "object") {
+            if (a.mode === "light" || a.mode === "dark") t = a.mode;
+            else if (a.mode === "auto") t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            if (typeof a.accent === "string" && /^[a-z]{1,12}$/.test(a.accent)) el.setAttribute("data-accent", a.accent);
+            if (a.bg && typeof a.bg.id === "string" && a.bg.id) el.setAttribute("data-appbg", "on");
+          } else {
+            var s = localStorage.getItem("wtp-theme");
+            if (s === "light" || s === "dark") t = s;
+          }
         } catch (e) {}
-        document.documentElement.setAttribute("data-theme", t);
+        el.setAttribute("data-theme", t);
       })();
     </script>
     <meta property="og:title" content="WorshipTech-Pro — EasyWorship Assistant" />
