@@ -10,13 +10,14 @@
  *   every copy in the schedule + the live screen), or — "Para sa schedule na ito lang" — only that item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, Save, Info, Image as ImageIcon, Rows3 } from "lucide-react";
+import { X, Save, Info, Image as ImageIcon, Rows3, Search, ExternalLink } from "lucide-react";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
 import { ChordSheet } from "./ChordSheet";
 import { MY_SONGS_LIMITS, SongDraft } from "../lib/mySongsStore";
 import { sampleBackground } from "../lib/songBackground";
 import { SongPreview } from "./SongPreview";
 import { BackgroundPicker, SongBgValue } from "./BackgroundPicker";
+import { lyricsSearchUrl } from "../lib/lyricsSearch";
 
 interface SongEditorModalProps {
   /** "bulk" = editing one song of the Bulk Add / Import folder preview (not saved to My Songs yet). */
@@ -96,6 +97,14 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
     ta.scrollTop = Math.max(0, line * lineHeight - ta.clientHeight / 3);
   };
 
+  /** 2026-11-09: opens a web search for the lyrics in a new tab; the user pastes them back here. */
+  const searchUrl = lyricsSearchUrl(title, author);
+  const openLyricsSearch = () => {
+    if (!searchUrl) return;
+    window.open(searchUrl, "_blank", "noopener,noreferrer");
+    lyricsRef.current?.focus({ preventScroll: true });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setTouched(true);
@@ -137,6 +146,23 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
               <input ref={firstFieldRef} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={MY_SONGS_LIMITS.MAX_TITLE} className={inputCls} placeholder="hal. What a Beautiful Name" />
               {touched && titleError && <span className="text-xs text-live-text">{titleError}</span>}
             </label>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 -mt-1">
+              <button
+                type="button"
+                onClick={openLyricsSearch}
+                disabled={!searchUrl}
+                title={searchUrl ? "Bubuksan ang web search sa bagong tab" : "Mag-type muna ng title"}
+                className="tap-target inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-medium text-fg hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="lyrics-web-search"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Hanapin ang lyrics sa web
+                <ExternalLink className="w-3 h-3 text-fg-subtle" />
+              </button>
+              <span className="text-xs text-fg-subtle">
+                {searchUrl ? "Kopyahin ang lyrics sa page, tapos i-paste sa Lyrics box sa ibaba." : "Mag-type muna ng title (at artist kung alam)."}
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_6rem_8rem] gap-2">
               <label className="block col-span-2 sm:col-span-1">
                 <span className="text-xs font-semibold text-fg">Author / Artist</span>

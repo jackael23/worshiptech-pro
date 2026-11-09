@@ -26,7 +26,9 @@ import { decodeTextFile, parseSongFile, parseSongFileForBulk, SONG_FILE_EXTENSIO
 import { SongEditorModal } from "./SongEditorModal";
 import { BulkAddModal } from "./BulkAddModal";
 import { BulkSong } from "../lib/bulkPaste";
-import { parsePptxForBulk } from "../lib/pptxSongImport";
+// 2026-11-09: loaded only when a PowerPoint is imported (brings JSZip).
+const parsePptxForBulk = async (...args: Parameters<typeof import("../lib/pptxSongImport").parsePptxForBulk>) =>
+  (await import("../lib/pptxSongImport")).parsePptxForBulk(...args);
 import { resolveSongBackground } from "../lib/songBackground";
 import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
 import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";

@@ -60,9 +60,18 @@ type RemoteCmd =
 const ID_RE = /^[\w.:-]{1,100}$/;
 const intIn = (v: unknown, min: number, max: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : null);
 
-function isLocal(req: Request): boolean {
+/** Host header names a laptop page uses ("localhost:3000", "127.0.0.1:3000", "[::1]:3000"). */
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/**
+ * True only for requests from this computer. 2026-11-09: also checks the Host header, so a
+ * website opened on the laptop cannot use DNS rebinding (its own domain pointed at 127.0.0.1)
+ * to read the PIN or send host commands — such a request still carries that site's Host name.
+ */
+export function isLocal(req: Request): boolean {
   const a = req.socket.remoteAddress || "";
-  return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
+  if (a !== "127.0.0.1" && a !== "::1" && a !== "::ffff:127.0.0.1") return false;
+  return LOCAL_HOST_RE.test(String(req.headers.host || ""));
 }
 
 function newPin(): string {
