@@ -12,6 +12,7 @@
  */
 import JSZip from "jszip";
 import type { SlideContent } from "../types";
+import { IMAGE_SLIDE_TYPES } from "./slideImageTypes";
 
 export const PPT_LIMITS = {
   MAX_PPTX_BYTES: 150 * 1024 * 1024,
@@ -21,7 +22,7 @@ export const PPT_LIMITS = {
   MAX_NOTES_CHARS: 4000,
 };
 
-export const IMAGE_SLIDE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export { IMAGE_SLIDE_TYPES };
 
 export interface ImportedDeck {
   name: string;
