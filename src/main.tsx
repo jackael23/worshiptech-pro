@@ -1,10 +1,13 @@
-import {StrictMode} from 'react';
+import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import {OutputWindow} from './components/OutputWindow';
-import {RemoteControl} from './components/RemoteControl';
-import {StageScreen} from './components/StageScreen';
 import './index.css';
+
+// 2026-11-09: each page type is its own chunk, so the phone remote and the projector / stage
+// windows do not download the whole Simulator (PouchDB, PPT import, chat, …).
+const App = lazy(() => import('./App.tsx'));
+const OutputWindow = lazy(() => import('./components/OutputWindow').then((m) => ({default: m.OutputWindow})));
+const RemoteControl = lazy(() => import('./components/RemoteControl').then((m) => ({default: m.RemoteControl})));
+const StageScreen = lazy(() => import('./components/StageScreen').then((m) => ({default: m.StageScreen})));
 
 // 2026-10-28 (Jarvis): ?output=main = projector / second-monitor window (only the LIVE screen).
 const params = new URLSearchParams(location.search);
@@ -20,6 +23,8 @@ if (!isRemote && typeof EventSource !== 'undefined') new EventSource('/api/app/p
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isOutput ? <OutputWindow /> : isStage ? <StageScreen /> : isRemote ? <RemoteControl /> : <App />}
+    <Suspense fallback={null}>
+      {isOutput ? <OutputWindow /> : isStage ? <StageScreen /> : isRemote ? <RemoteControl /> : <App />}
+    </Suspense>
   </StrictMode>,
 );

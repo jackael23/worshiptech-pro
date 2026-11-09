@@ -3,7 +3,7 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { HOTKEYS_TEXT, HOTKEYS_VERIFIED_FOR } from "./src/data/easyworshipData";
-import { registerRemoteRoutes } from "./remoteServer";
+import { isLocal, registerRemoteRoutes } from "./remoteServer";
 
 dotenv.config();
 
@@ -102,8 +102,7 @@ function registerAutoStop(app: express.Express) {
   setInterval(() => pages.forEach((p) => p.write(": ping\n\n")), AUTO_STOP.HEARTBEAT_MS).unref();
 
   app.get("/api/app/presence", (req, res) => {
-    const a = req.socket.remoteAddress || "";
-    if (a !== "127.0.0.1" && a !== "::1" && a !== "::ffff:127.0.0.1") return res.status(403).end();
+    if (!isLocal(req)) return res.status(403).end();
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
     res.write("retry: 1000\n\n");
     pages.add(res);
@@ -127,7 +126,10 @@ async function startServer() {
   const PORT = 3000;
 
   // Behind one proxy (Cloud Run / AI Studio) so req.ip is the real client IP.
-  app.set("trust proxy", 1);
+  // 2026-11-09: only there. On the church laptop there is no proxy, and trusting
+  // X-Forwarded-For let anyone on the WiFi fake their IP to skip the chat rate limit.
+  // Cloud Run sets K_SERVICE; elsewhere behind a proxy, set TRUST_PROXY=1 in .env.
+  if (process.env.TRUST_PROXY === "1" || process.env.K_SERVICE) app.set("trust proxy", 1);
   // 2026-10-29 (Jarvis): phone remote (same WiFi). Registered before the 64kb JSON parser
   // because the laptop's snapshot (with small slide pictures) can be bigger.
   registerRemoteRoutes(app, PORT);

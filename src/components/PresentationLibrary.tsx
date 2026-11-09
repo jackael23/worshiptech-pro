@@ -7,7 +7,9 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Upload, Images, AlertTriangle, Loader2, Presentation as PresentationIcon } from "lucide-react";
-import { readPptx, readImageSlides, IMAGE_SLIDE_TYPES } from "../lib/pptxImport";
+import { IMAGE_SLIDE_TYPES } from "../lib/slideImageTypes";
+// 2026-11-09: pptxImport (with JSZip) is loaded only when a file is imported.
+const loadPptx = () => import("../lib/pptxImport");
 import {
   StoredPresentation,
   PRESENTATION_LIMITS,
@@ -77,7 +79,7 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
     for (const f of files) {
       setBusy(`Binabasa ang ${f.name}…`);
       try {
-        await store(await readPptx(f, f.name));
+        await store(await (await loadPptx()).readPptx(f, f.name));
       } catch (err: any) {
         setNotice({ text: `${f.name}: ${err?.message || "hindi nabasa."}`, tone: "warn" });
       }
@@ -95,7 +97,7 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
     setNotice(null);
     setBusy(`Binabasa ang ${files.length} larawan…`);
     try {
-      await store(await readImageSlides(files, name.trim() || suggested));
+      await store(await (await loadPptx()).readImageSlides(files, name.trim() || suggested));
     } catch (err: any) {
       setNotice({ text: err?.message || "Hindi nabasa ang mga larawan.", tone: "warn" });
     }

@@ -3,18 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Header, MobileNav, AppTab } from "./components/Header";
 import { AppBackdrop } from "./components/AppBackdrop";
 import { Appearance, applyAppearance, loadAppearance, resolveMode, saveAppearance, systemPrefersDark } from "./lib/appearance";
-import { ChatAssistant } from "./components/ChatAssistant";
-import { WorkflowCanvasSimulator } from "./components/WorkflowCanvasSimulator";
-import { VisualGuidesDeck } from "./components/VisualGuidesDeck";
-import { ShortcutsPanel } from "./components/ShortcutsPanel";
 import { EasyWorshipVersion, SupportedLanguage, LiveState } from "./types";
 import { SAMPLE_SONGS } from "./data/easyworshipData";
 import { openLiveChannel, LiveMessage, OUTPUT_TIMEOUT_MS } from "./lib/liveChannel";
 import { useLogoFrame, withLogo } from "./lib/logoStore";
+
+// 2026-11-09: tabs load on first open (own chunks) — Chat brings react-markdown, the
+// Simulator brings PouchDB; neither is needed until that tab is shown.
+const ChatAssistant = lazy(() => import("./components/ChatAssistant").then((m) => ({ default: m.ChatAssistant })));
+const WorkflowCanvasSimulator = lazy(() => import("./components/WorkflowCanvasSimulator").then((m) => ({ default: m.WorkflowCanvasSimulator })));
+const VisualGuidesDeck = lazy(() => import("./components/VisualGuidesDeck").then((m) => ({ default: m.VisualGuidesDeck })));
+const ShortcutsPanel = lazy(() => import("./components/ShortcutsPanel").then((m) => ({ default: m.ShortcutsPanel })));
+
+function TabLoading() {
+  return <div className="m-auto p-8 text-sm text-fg-muted">Naglo-load…</div>;
+}
 
 
 export default function App() {
@@ -164,6 +171,7 @@ export default function App() {
             activeTab === "simulator" ? "max-w-[1600px]" : "max-w-7xl"
           } ${fullBleed ? "h-full" : "min-h-full"}`}
         >
+          <Suspense fallback={<TabLoading />}>
           {activeTab === "chat" && (
             <ChatAssistant version={version} language={language} onOpenSimulator={() => setActiveTab("simulator")} onOpenGuides={() => setActiveTab("guides")} />
           )}
@@ -177,6 +185,7 @@ export default function App() {
           )}
 
           {activeTab === "shortcuts" && <ShortcutsPanel version={version} onAskAI={handleAskAssistant} />}
+          </Suspense>
         </div>
       </main>
 
