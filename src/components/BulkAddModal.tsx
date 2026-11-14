@@ -10,7 +10,7 @@
  *   checked songs at once (picture / video / built-in — saved as an id, see songBackground.ts).
  */
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { X, Save, AlertTriangle, ListPlus, FolderOpen, Info, Pencil, Image as ImageIcon, Check } from "lucide-react";
+import { X, Save, AlertTriangle, ListPlus, FolderOpen, Presentation, Info, Pencil, Image as ImageIcon, Check } from "lucide-react";
 import { BulkSong, parseBulkText, replaceSongInText, validateDraft } from "../lib/bulkPaste";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
 import { planUpsert, SongDraft, StoredSong, UpsertStatus } from "../lib/mySongsStore";
@@ -25,6 +25,8 @@ interface BulkAddModalProps {
   initialSongs?: BulkSong[];
   /** review mode: short note, e.g. "3 file ang nilaktawan (hindi lyrics file)". */
   note?: string;
+  /** 2026-11-14: review-mode window title (default "Import folder"), e.g. "Import PowerPoint". */
+  title?: string;
   /** 2026-11-14: optional button after the note (PowerPoint: "Huwag hatiin" / "Hatiin ang mga kanta"). */
   noteAction?: { label: string; onClick: () => void };
   currentSongs: StoredSong[];
@@ -68,7 +70,7 @@ const bgLabel = (bgId?: string) => (!bgId ? "Default" : sampleBackground(bgId)?.
 const isDesktop = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(min-width: 1024px)").matches;
 const smallBtn = "tap-target text-xs px-2 py-1 rounded-md border border-line text-fg-muted hover:bg-surface-3 inline-flex items-center gap-1";
 
-export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, note, noteAction, currentSongs, onSave, onClose }) => {
+export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, note, noteAction, title, currentSongs, onSave, onClose }) => {
   const [text, setText] = useState("");
   const deferredText = useDeferredValue(text);
   const [reviewSongs, setReviewSongs] = useState<BulkSong[]>(initialSongs || []);
@@ -253,14 +255,20 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={mode === "paste" ? "Bulk Add songs" : "Import folder"}>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={mode === "paste" ? "Bulk Add songs" : title || "Import folder"}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => !dirty && onClose()} />
       <div className="relative bg-surface w-full sm:w-[97vw] sm:max-w-[1600px] h-[94dvh] sm:h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line">
         {/* Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-line">
           <h3 className="text-base font-bold text-fg flex items-center gap-2">
-            {mode === "paste" ? <ListPlus className="w-5 h-5 text-accent-text" /> : <FolderOpen className="w-5 h-5 text-accent-text" />}
-            {mode === "paste" ? "Bulk Add (maraming kanta)" : "Import folder"}
+            {mode === "paste" ? (
+              <ListPlus className="w-5 h-5 text-accent-text" />
+            ) : title === "Import PowerPoint" ? (
+              <Presentation className="w-5 h-5 text-accent-text" />
+            ) : (
+              <FolderOpen className="w-5 h-5 text-accent-text" />
+            )}
+            {mode === "paste" ? "Bulk Add (maraming kanta)" : title || "Import folder"}
           </h3>
           <button type="button" onClick={onClose} className="p-2 -mr-2 rounded-lg text-fg-subtle hover:bg-surface-3" aria-label="Close">
             <X className="w-5 h-5" />

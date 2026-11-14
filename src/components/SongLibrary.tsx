@@ -69,6 +69,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     mode: "paste" | "review";
     songs?: BulkSong[];
     note?: string;
+    title?: string;
     action?: { label: string; onClick: () => void };
     version?: number;
   } | null>(null);
@@ -197,6 +198,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       mode: "review",
       songs,
       note: note.replace(/\.?$/, "."),
+      title: "Import PowerPoint",
       action: splitAction(split, splitFiles, (s) => void showPptPreview(files, s)),
       version: (b?.version || 0) + 1,
     }));
@@ -565,6 +567,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           initialSongs={bulk.songs}
           note={bulk.note}
           noteAction={bulk.action}
+          title={bulk.title}
           currentSongs={mySongs}
           onSave={handleBulkSave}
           onClose={() => setBulk(null)}
