@@ -10,3 +10,6 @@ coverage/
 # Firebase (2026-10-28)
 .firebase/
 firebase-debug.log
+
+# Claude Code app settings (launch / preview) — local only (2026-11-14)
+.claude/

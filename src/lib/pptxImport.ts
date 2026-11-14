@@ -9,10 +9,15 @@
  *     One picture = one slide, so it looks exactly like the original.
  *
  * Everything stays in the browser; nothing is sent to the server. Old .ppt files are not supported.
+ *
+ * 2026-11-14: a picture that (almost) fills a slide is no longer lost — a picture-only slide
+ * (announcement, poster, photo) shows that picture, and a full-slide photo behind text becomes the
+ * slide's background. Pictures bigger than 1920×1080 are scaled down (lib/imageShrink.ts).
  */
 import JSZip from "jszip";
 import type { SlideContent } from "../types";
 import { IMAGE_SLIDE_TYPES } from "./slideImageTypes";
+import { shrinkImage } from "./imageShrink";
 
 export const PPT_LIMITS = {
   MAX_PPTX_BYTES: 150 * 1024 * 1024,
@@ -138,7 +143,11 @@ async function mediaDataUrl(zip: JSZip, part: string, cache: Map<string, string 
   const mime = MIME[(part.split(".").pop() || "").toLowerCase()];
   const f = zip.file(part);
   let url: string | null = null;
-  if (mime && f) url = `data:${mime};base64,${await f.async("base64")}`; // .emf/.wmf/.tiff can't be shown in a browser
+  if (mime && f) {
+    // .emf/.wmf/.tiff can't be shown in a browser (no mime → skipped)
+    const small = await shrinkImage(new Blob([await f.async("uint8array")], { type: mime }), mime);
+    url = await readAsDataUrl(small.blob);
+  }
   cache.set(part, url);
   return url;
 }
@@ -344,9 +353,16 @@ interface TextBlock {
   phType: string;
 }
 
+/** A picture on the slide: its relationship id and how much of the slide it covers (EMU²). */
+interface SlidePicture {
+  embed: string | null;
+  area: number;
+}
+
 /** Text shapes of a slide, top-to-bottom (titles without a position go first). Walks groups too. */
-function slideTextBlocks(spTree: Element | null): { blocks: TextBlock[]; pictures: number } {
+function slideTextBlocks(spTree: Element | null): { blocks: TextBlock[]; pictures: number; pics: SlidePicture[] } {
   const blocks: TextBlock[] = [];
+  const pics: SlidePicture[] = [];
   let pictures = 0;
   let order = 0;
   const walk = (el: Element | null) => {
@@ -384,13 +400,18 @@ function slideTextBlocks(spTree: Element | null): { blocks: TextBlock[]; picture
         } else pictures++;
       } else if (c.localName === "pic") {
         pictures++;
+        const ext = path(c, "spPr", "xfrm", "ext");
+        pics.push({
+          embed: relAttr(path(c, "blipFill", "blip"), "embed"),
+          area: Number(ext?.getAttribute("cx") || 0) * Number(ext?.getAttribute("cy") || 0),
+        });
       }
     }
   };
   walk(spTree);
   // Same row (within ~0.5 cm) → left to right; otherwise top to bottom.
   blocks.sort((a, b) => (Math.abs(a.y - b.y) < 180000 ? a.x - b.x || a.order - b.order : a.y - b.y));
-  return { blocks, pictures };
+  return { blocks, pictures, pics };
 }
 
 function notesText(doc: Document | null): string {
@@ -431,6 +452,9 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
     .map((s) => presRels.get(relAttr(s, "id") || "")?.target)
     .filter((t): t is string => !!t);
   if (slideParts.length === 0) throw new Error("Walang slide sa file na ito.");
+  // Slide size (EMU); PowerPoint's 16:9 default when missing.
+  const sldSz = path(pres.documentElement, "sldSz");
+  const slideArea = (Number(sldSz?.getAttribute("cx")) || 12192000) * (Number(sldSz?.getAttribute("cy")) || 6858000);
 
   const media = new Map<string, string | null>();
   const themeCache = new Map<string, { theme: Theme; clrMap: ClrMap; bg: Background | null }>();
@@ -491,11 +515,24 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
     if (!bg) bg = master.bg;
     if (!bg) bg = { css: "#FFFFFF", light: 1 }; // PowerPoint's default white slide
 
-    const { blocks, pictures } = slideTextBlocks(path(root, "cSld", "spTree"));
+    const { blocks, pictures, pics } = slideTextBlocks(path(root, "cSld", "spTree"));
     const text = clip(blocks.map((b) => b.text).join("\n\n"), PPT_LIMITS.MAX_TEXT_CHARS);
     const title = blocks.find((b) => b.isTitle)?.text.split("\n")[0];
-    if (pictures) withPictures++;
-    if (!text && pictures) pictureOnly++;
+
+    // 2026-11-14: the biggest picture on the slide — shown when it is the slide's content (no text,
+    // covers ≥ 20% of the slide) or used as the background (behind text, covers ≥ 85% of the slide).
+    let image: string | undefined;
+    let shown = 0;
+    const big = pics.filter((p) => p.embed && rels.get(p.embed)).sort((a, b) => b.area - a.area)[0];
+    if (big && (text ? big.area >= 0.85 * slideArea : big.area >= 0.2 * slideArea)) {
+      const url = await mediaDataUrl(zip, rels.get(big.embed!)!.target, media);
+      // the saved slide only keeps png/jpeg/webp/gif pictures (presentationStore) — others go behind as background
+      if (url && !text && /^data:image\/(png|jpe?g|webp|gif);/i.test(url)) image = url;
+      else if (url) bg = { css: `url("${url}") ${text ? "center / cover" : "center / contain"} no-repeat, #000` }; // brightness unknown → light text
+      if (url) shown = 1;
+    }
+    if (pictures > shown) withPictures++;
+    if (!text && pictures && !image) pictureOnly++;
 
     const notesPart = relOfType(rels, "notesSlide");
     const notes = notesPart ? clip(notesText(await readXml(zip, notesPart)), PPT_LIMITS.MAX_NOTES_CHARS) : "";
@@ -504,6 +541,7 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
     slides.push({
       label: title ? clip(`${n}. ${title}`, 60) : `Slide ${n}`,
       text,
+      image,
       background: bg.css,
       textColor: bg.light !== undefined && bg.light > 0.6 ? "#0f172a" : undefined,
       notes: notes || undefined,
@@ -521,8 +559,8 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
   if (hidden) warnings.push(`${hidden} naka-hide na slide ang hindi isinama.`);
   if (withPictures) {
     warnings.push(
-      `${withPictures} slide ang may larawan/shape na hindi kasama (text at background lang ang nakukuha)${
-        pictureOnly ? `; ${pictureOnly} dito ay larawan lang talaga` : ""
+      `${withPictures} slide ang may larawan/shape na hindi kasama (maliliit na larawan, shapes, charts)${
+        pictureOnly ? `; ${pictureOnly} dito ang walang maipapakita` : ""
       }. Para eksakto ang itsura, i-export ang PPT bilang PNG at gamitin ang Images.`,
     );
   }
@@ -565,7 +603,8 @@ export async function readImageSlides(files: File[], name: string): Promise<Impo
   if (chosen.length === 0) throw new Error(warnings[0] || "Walang larawang napili.");
   const slides: SlideContent[] = [];
   for (const [i, f] of chosen.entries()) {
-    slides.push({ label: `Slide ${i + 1}`, text: "", image: await readAsDataUrl(f), background: "#000000" });
+    const small = await shrinkImage(f, f.type);
+    slides.push({ label: `Slide ${i + 1}`, text: "", image: await readAsDataUrl(small.blob), background: "#000000" });
   }
   return { name: name.slice(0, 80) || "Mga larawan", kind: "images", slides, warnings };
 }

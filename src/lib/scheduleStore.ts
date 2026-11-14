@@ -6,10 +6,13 @@
  *  - The selected item is a small number, kept in localStorage.
  *  - A copy stays in memory, so coming back to the Simulator tab shows it at once.
  * On-air state (LIVE / Black / Logo) is NOT saved: after a reload nothing goes to the projector by itself.
+ * 2026-11-14: pictures are saved once each as their own attachment (lib/dataUrlAssets.ts) — a PPT item's
+ *   background picture used to be written again for every slide. Old saves are still read.
  */
 import PouchDB from "pouchdb-browser";
 import type { ScheduleItem, SlideContent } from "../types";
 import { SONG_ID_RE } from "./scheduleSync";
+import { packAssets, assetAttachments, unpackAssets } from "./dataUrlAssets";
 
 const DB_NAME = "wtp-schedule";
 const DOC_ID = "current";
@@ -68,6 +71,9 @@ function cleanItems(v: unknown): ScheduleItem[] | null {
       songId: type === "song" && typeof o.songId === "string" && SONG_ID_RE.test(o.songId) ? o.songId : undefined,
       // 2026-11-08: song key for the Stage screen
       songKey: str(o.songKey, 8),
+      // 2026-11-14: song background this item follows + "para sa schedule na ito lang" marker
+      songBg: str(o.songBg, 400),
+      songUnlinked: o.songUnlinked === true ? true : undefined,
     };
     out.push(item);
   }
@@ -81,8 +87,12 @@ export const getCachedSchedule = (): ScheduleItem[] | null => cache;
 export async function loadSchedule(): Promise<ScheduleItem[] | null> {
   if (cache) return cache;
   try {
-    const blob = (await getDb().getAttachment(DOC_ID, ATTACHMENT)) as Blob;
-    const items = cleanItems(JSON.parse(await blob.text()));
+    const doc = (await getDb().get(DOC_ID, { attachments: true, binary: true })) as unknown as {
+      _attachments?: Record<string, { content_type?: string; data?: unknown }>;
+    };
+    const blob = doc._attachments?.[ATTACHMENT]?.data;
+    if (!(blob instanceof Blob)) return null;
+    const items = cleanItems(await unpackAssets(JSON.parse(await blob.text()), doc._attachments));
     if (items && items.length > 0) cache = items;
     return cache;
   } catch {
@@ -109,12 +119,16 @@ async function writeLoop(): Promise<void> {
         } catch {
           /* first save */
         }
+        const { packed, assets } = packAssets(items);
         const doc = {
           _id: DOC_ID,
           ...(rev ? { _rev: rev } : {}),
           savedAt: new Date().toISOString(),
           count: items.length,
-          _attachments: { [ATTACHMENT]: { content_type: "application/json", data: new Blob([JSON.stringify(items)], { type: "application/json" }) } },
+          _attachments: {
+            [ATTACHMENT]: { content_type: "application/json", data: new Blob([JSON.stringify(packed)], { type: "application/json" }) },
+            ...assetAttachments(assets),
+          },
         };
         await d.put(doc);
       } catch (err) {
