@@ -10,7 +10,7 @@
  *   every copy in the schedule + the live screen), or — "Para sa schedule na ito lang" — only that item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, Save, Info, Image as ImageIcon, Rows3, Search, ExternalLink } from "lucide-react";
+import { X, Save, Image as ImageIcon, Rows3, Search, ExternalLink } from "lucide-react";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
 import { ChordSheet } from "./ChordSheet";
 import { MY_SONGS_LIMITS, SongDraft } from "../lib/mySongsStore";
@@ -266,10 +266,6 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
                 </div>
               </div>
             )}
-            <p className="text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5 flex gap-1.5 shrink-0">
-              <Info className="w-4 h-4 shrink-0" />
-              <span>Naka-save sa browser na ito (at sa sarili mong CouchDB kapag naka-on ang sync); hindi ipinapadala sa AI o sa ibang server. Gamitin lang ang lyrics kung may CCLI license ang simbahan ninyo.</span>
-            </p>
           </div>
         </div>
 
