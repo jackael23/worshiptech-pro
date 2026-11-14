@@ -6,6 +6,14 @@
     <title>WorshipTech-Pro — EasyWorship Assistant</title>
     <meta name="description" content="AI assistant at practice simulator para sa EasyWorship 7/6/2009: hotkeys, step-by-step guides, songs at buong Bible (Ang Biblia 1905, KJV)." />
     <meta name="theme-color" content="#111113" />
+    <!-- 2026-11-14: app icon for the browser tab and for desktop / phone home-screen shortcuts (files in public/).
+         The manifest has no start_url on purpose: a shortcut opens the page it was made from (main app or ?remote). -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="WorshipTech" />
+    <meta name="application-name" content="WorshipTech-Pro" />
     <!-- 2026-10-28 (Jarvis): apply the saved theme before first paint (no white flash in dark mode) -->
     <!-- 2026-11-07 (Mira): reads Appearance (mode incl. auto + accent + background); falls back to the old wtp-theme -->
     <script>

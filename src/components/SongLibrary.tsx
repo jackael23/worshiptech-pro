@@ -63,7 +63,16 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pptInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const [bulk, setBulk] = useState<{ mode: "paste" | "review"; songs?: BulkSong[]; note?: string } | null>(null);
+  // 2026-11-14: `action` = extra button next to the note (PPT: "Huwag hatiin" / "Hatiin ang mga kanta");
+  // `version` remounts the preview when the same import is read again.
+  const [bulk, setBulk] = useState<{
+    mode: "paste" | "review";
+    songs?: BulkSong[];
+    note?: string;
+    title?: string;
+    action?: { label: string; onClick: () => void };
+    version?: number;
+  } | null>(null);
   const [readingFolder, setReadingFolder] = useState(false);
 
   // Always the latest list, so async saves diff against what is really on screen.
@@ -153,21 +162,46 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
 
   // 2026-11-08: PowerPoint files (.pptx) → one song each (the slides' text), shown in the Bulk Add preview first.
   const isPptFile = (f: File) => /\.(pptx|ppt|pps)$/i.test(f.name);
-  const readPptFiles = async (pptFiles: File[]) => {
+  // 2026-11-14: a PPT with several songs (line-up) is split into one song each, unless split = false.
+  const readPptFiles = async (pptFiles: File[], split = true) => {
     setReadingFolder(true);
     const songs: BulkSong[] = [];
     const warnings: string[] = [];
+    let splitFiles = 0;
     try {
       for (const f of pptFiles) {
         const name = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-        const r = await parsePptxForBulk(f, name);
+        const r = await parsePptxForBulk(f, name, { split });
         songs.push(...r.songs);
         warnings.push(...r.warnings);
+        if (r.split) splitFiles++;
       }
     } finally {
       setReadingFolder(false);
     }
-    return { songs, warnings };
+    return { songs, warnings, splitFiles };
+  };
+  /** Button that reads the same files again with splitting turned off (or back on). */
+  const splitAction = (split: boolean, splitFiles: number, redo: (split: boolean) => void) =>
+    !split
+      ? { label: "Hatiin ang mga kanta", onClick: () => redo(true) }
+      : splitFiles > 0
+        ? { label: "Huwag hatiin (1 kanta bawat PPT)", onClick: () => redo(false) }
+        : undefined;
+  const showPptPreview = async (files: File[], split = true) => {
+    const { songs, warnings, splitFiles } = await readPptFiles(files, split);
+    const head = splitFiles
+      ? `${files.length} PowerPoint ang nabasa — ${splitFiles} dito ang may ilang kanta kaya hinati (${songs.length} kanta lahat)`
+      : `${files.length} PowerPoint ang nabasa — text ng bawat slide ang naging lyrics (title = pangalan ng file)`;
+    const note = [head, ...warnings.slice(0, 3)].join(" · ");
+    setBulk((b) => ({
+      mode: "review",
+      songs,
+      note: note.replace(/\.?$/, "."),
+      title: "Import PowerPoint",
+      action: splitAction(split, splitFiles, (s) => void showPptPreview(files, s)),
+      version: (b?.version || 0) + 1,
+    }));
   };
   const handlePptFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).filter(isPptFile);
@@ -176,9 +210,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       setNotice({ text: "Piliin ang PowerPoint file (.pptx).", tone: "warn" });
       return;
     }
-    const { songs, warnings } = await readPptFiles(files);
-    const note = [`${files.length} PowerPoint ang nabasa — text ng bawat slide ang naging lyrics (title = pangalan ng file)`, ...warnings.slice(0, 3)].join(" · ");
-    setBulk({ mode: "review", songs, note: note + "." });
+    await showPptPreview(files);
   };
 
   // 2026-10-20: also accepts SongSelect (.txt / .usr / .bin) and ChordPro files, several at once.
@@ -214,9 +246,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       if (files.length === songFiles.length) return;
     }
     if (pptFiles.length > 0) {
-      const { songs, warnings } = await readPptFiles(pptFiles);
-      const note = [`${pptFiles.length} PowerPoint ang nabasa — text ng bawat slide ang naging lyrics`, ...warnings.slice(0, 3)].join(" · ");
-      setBulk({ mode: "review", songs, note: note + "." });
+      await showPptPreview(pptFiles);
       if (files.length === pptFiles.length + songFiles.length) return;
     }
     const file = files.find((f) => f.name.toLowerCase().endsWith(".json"));
@@ -279,14 +309,20 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       setNotice({ text: `Walang lyrics file sa folder (${files.length} file, hindi .txt / SongSelect / ChordPro / PowerPoint).`, tone: "warn" });
       return;
     }
+    await showFolderPreview(songFiles, otherCount);
+  };
+  const showFolderPreview = async (songFiles: File[], otherCount: number, split = true) => {
+    const pathOf = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
     setReadingFolder(true);
     const songs: BulkSong[] = [];
+    let splitFiles = 0;
     try {
       for (const f of songFiles.slice(0, MAX_FOLDER_FILES)) {
         const name = pathOf(f);
         if (isPptFile(f)) {
-          const r = await parsePptxForBulk(f, name);
+          const r = await parsePptxForBulk(f, name, { split });
           songs.push(...r.songs);
+          if (r.split) splitFiles++;
           continue;
         }
         if (f.size > MAX_SONG_FILE_BYTES) {
@@ -300,8 +336,15 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     }
     const notes: string[] = [`${songFiles.length} lyrics file ang nabasa`];
     if (otherCount) notes.push(`${otherCount} ibang file ang nilaktawan (hindi .txt / SongSelect / ChordPro / PowerPoint)`);
+    if (splitFiles) notes.push(`${splitFiles} PowerPoint ang may ilang kanta kaya hinati`);
     if (songFiles.length > MAX_FOLDER_FILES) notes.push(`max ${MAX_FOLDER_FILES} file lang bawat import`);
-    setBulk({ mode: "review", songs, note: notes.join(" · ") + "." });
+    setBulk((b) => ({
+      mode: "review",
+      songs,
+      note: notes.join(" · ") + ".",
+      action: splitAction(split, splitFiles, (s) => void showFolderPreview(songFiles, otherCount, s)),
+      version: (b?.version || 0) + 1,
+    }));
   };
 
   const q = searchQuery.trim().toLowerCase();
@@ -519,9 +562,12 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
 
       {bulk && (
         <BulkAddModal
+          key={bulk.version || 0}
           mode={bulk.mode}
           initialSongs={bulk.songs}
           note={bulk.note}
+          noteAction={bulk.action}
+          title={bulk.title}
           currentSongs={mySongs}
           onSave={handleBulkSave}
           onClose={() => setBulk(null)}

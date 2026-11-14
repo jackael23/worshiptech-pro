@@ -51,6 +51,15 @@ Mga paalala:
 - Hindi gumagana sa Firebase (web.app) na version, dahil ang local server ang nagsisilbing tulay.
 - Sa `npm run dev`, may lalabas na "[vite] failed to connect to websocket" sa console ng phone. Hot reload lang ito ng Vite, walang epekto sa remote.
 
+## Icon / shortcut sa desktop at phone
+
+May sariling icon ang app (asul na monitor na may play), nasa `public/` (`icon.svg`, `favicon.ico`, PNG icons, `manifest.webmanifest`).
+
+- **Desktop (Chrome / Edge):** menu (⋮) → *Cast, save, and share* → **Install page as app** o **Create shortcut**. Lalabas ang icon sa desktop / taskbar at bubukas sa sariling window.
+- **Android (Chrome):** menu (⋮) → **Add to Home screen**.
+- **iPhone / iPad (Safari):** Share → **Add to Home Screen**.
+- Kapag ginawa ang shortcut habang nasa phone remote (`/?remote`), ang remote ang bubukas, hindi ang buong app.
+
 ## Mga Bible file
 
 Nasa `bibles/` ang `.wtp-bible.json` files. I-import sa app: **Simulator → Bibles → Import Bible**. Basahin ang `bibles/README.md` para sa source at license.
