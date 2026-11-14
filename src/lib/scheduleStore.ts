@@ -71,6 +71,9 @@ function cleanItems(v: unknown): ScheduleItem[] | null {
       songId: type === "song" && typeof o.songId === "string" && SONG_ID_RE.test(o.songId) ? o.songId : undefined,
       // 2026-11-08: song key for the Stage screen
       songKey: str(o.songKey, 8),
+      // 2026-11-14: song background this item follows + "para sa schedule na ito lang" marker
+      songBg: str(o.songBg, 400),
+      songUnlinked: o.songUnlinked === true ? true : undefined,
     };
     out.push(item);
   }

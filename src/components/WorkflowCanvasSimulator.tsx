@@ -61,11 +61,12 @@ import { ResizeHandle } from "./ResizeHandle";
 import { SongEditorModal } from "./SongEditorModal";
 import { loadSongsFromDb, reloadSongs, saveSongsDiff, watchSongs } from "../lib/songsDb";
 import type { StoredSong, SongDraft } from "../lib/mySongsStore";
-import { toSongItem } from "../lib/mySongsStore";
+import { toSongItem, USER_SONG_BACKGROUND } from "../lib/mySongsStore";
+import { resolveSongBackground } from "../lib/songBackground";
 import { listBibles, getBible, watchBibles, type WtpBible, type BibleMeta } from "../lib/bibleStore";
 import { lookupVerses, passageFor } from "../lib/bibleLookup";
 import type { RemoteLibrary } from "../lib/remoteLink";
-import { syncScheduleWithSongs, songSlides, retitle, slidesToLyrics, SONG_ID_RE } from "../lib/scheduleSync";
+import { syncScheduleWithSongs, songSlides, retitle, slidesToLyrics, SONG_ID_RE, songBgSig } from "../lib/scheduleSync";
 
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
 const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
@@ -140,6 +141,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   // Latest schedule for async callbacks (song DB changes arrive outside React's render).
   const scheduleRef = useRef<ScheduleItem[]>(scheduleItems);
   scheduleRef.current = scheduleItems;
+  /** 2026-11-14: latest default-theme background, for song edits that arrive outside React's render. */
+  const defaultThemeBgRef = useRef<ItemBg | null>(null);
   /** My Songs as last read from the songs database (null = not read yet / database unavailable). */
   const songsRef = useRef<StoredSong[] | null>(null);
   /** The slide on air follows an edit of its song (same slide number; last slide if it got shorter). */
@@ -180,6 +183,33 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     if (!scheduleLoaded.current) return; // the saved schedule isn't read yet — done after it loads
     const r = syncScheduleWithSongs(scheduleRef.current, songs);
     if (r.changed) commitSchedule(r.items);
+    if (r.bgPending.length) void applySongBackgrounds(r.bgPending, songs);
+  };
+  /**
+   * 2026-11-14: the song's background was changed in My Songs → the schedule item (and the live
+   * screen) take the new one. No background on the song any more → the default theme's, or the
+   * plain My Songs gradient. A picture / video that isn't in this browser leaves the item as it is.
+   */
+  const applySongBackgrounds = async (itemIds: string[], songs: StoredSong[]) => {
+    const updates = new Map<string, Partial<ScheduleItem>>();
+    for (const id of itemIds) {
+      const item = scheduleRef.current.find((i) => i.id === id);
+      const song = item?.songId ? songs.find((s) => s.id === item.songId) : undefined;
+      if (!item || !song) continue;
+      const sig = songBgSig(song);
+      if (!song.bgId) {
+        const d = defaultThemeBgRef.current;
+        updates.set(id, d ? { ...bgFields(d), songBg: sig } : { background: USER_SONG_BACKGROUND, bgMediaId: undefined, bgSettings: undefined, songBg: sig });
+        continue;
+      }
+      const r = await resolveSongBackground(song.bgId);
+      updates.set(id, r.css ? { background: r.css, bgMediaId: r.mediaId, bgSettings: song.bgSettings, songBg: sig } : { songBg: sig });
+    }
+    if (updates.size === 0) return;
+    // the schedule may have changed while the pictures were loading: apply to the latest one
+    const items = scheduleRef.current.map((i) => (updates.has(i.id) ? { ...i, ...updates.get(i.id) } : i));
+    commitSchedule(items);
+    refreshLiveBackground(items);
   };
   useEffect(() => {
     let alive = true;
@@ -246,8 +276,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     if (slides.length === 0) return;
     const items = scheduleRef.current.map((i) => {
       if (i.id !== item.id) return i;
-      const { songId: _unlink, ...rest } = i;
-      return { ...rest, title: retitle(i.title, draft.title), slides, activeSlideIndex: Math.min(i.activeSlideIndex, slides.length - 1) } as ScheduleItem;
+      const { songId: _unlink, songBg: _bg, ...rest } = i;
+      // 2026-11-14: songUnlinked = never linked back to the My Song automatically (scheduleSync)
+      return { ...rest, title: retitle(i.title, draft.title), slides, activeSlideIndex: Math.min(i.activeSlideIndex, slides.length - 1), songUnlinked: true } as ScheduleItem;
     });
     commitSchedule(items);
     setSongEditNotice(`Binago ang "${draft.title}" para sa schedule na ito lang.`);
@@ -409,6 +440,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   /** Background of the default theme, for new songs / verses (null = keep the old behavior). */
   const [defaultThemeBg, setDefaultThemeBg] = useState<ItemBg | null>(null);
+  defaultThemeBgRef.current = defaultThemeBg;
   useEffect(() => {
     const t = findTheme(themeStore, themeStore.defaultId);
     if (!t) return setDefaultThemeBg(null);
@@ -484,7 +516,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       ...(song.bgMediaId ? { bgMediaId: song.bgMediaId } : {}),
       ...(song.bgId && song.bgSettings ? { bgSettings: song.bgSettings } : {}),
       // 2026-11-07: remember the My Song, so editing it updates this item (and the live screen)
-      ...(song.source === "user" && SONG_ID_RE.test(song.id) ? { songId: song.id } : {}),
+      ...(song.source === "user" && SONG_ID_RE.test(song.id) ? { songId: song.id, songBg: songBgSig(song) } : {}),
       // 2026-11-08: key for the Stage screen
       ...(song.key ? { songKey: song.key } : {}),
     };
@@ -670,8 +702,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   // ---------- 2026-11-08 (Mira): phone changes the schedule + Bible (Library tab) ----------
   /** Latest handlers, for commands that finish after an await (Bible loads from the database). */
-  const latest = useRef({ handleAddPassage, handleLivePassage });
-  latest.current = { handleAddPassage, handleLivePassage };
+  const latest = useRef({ handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt });
+  latest.current = { handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt };
   const bibleCache = useRef<WtpBible | null>(null);
   const loadBibleFor = async (id: string): Promise<WtpBible | null> => {
     if (bibleCache.current?.id === id) return bibleCache.current;
@@ -690,8 +722,17 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       case "add-song": {
         const song = findSong(cmd.songId);
         if (!song || song.slides.length === 0) return true;
-        const item = handleAddSongToSchedule(song);
-        if (cmd.live) goLiveAt(item, 0);
+        if (!song.bgId) {
+          const item = handleAddSongToSchedule(song);
+          if (cmd.live) goLiveAt(item, 0);
+          return true;
+        }
+        // 2026-11-14: the My Song's own picture / video background (the phone used to add it without)
+        resolveSongBackground(song.bgId).then((r) => {
+          const withBg = r.css ? { ...song, defaultBackground: r.css, bgMediaId: r.mediaId } : song;
+          const item = latest.current.handleAddSongToSchedule(withBg);
+          if (cmd.live) latest.current.goLiveAt(item, 0);
+        });
         return true;
       }
       case "remove": {

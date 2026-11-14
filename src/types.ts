@@ -124,6 +124,13 @@ export interface ScheduleItem {
   songId?: string;
   /** 2026-11-08: song key (e.g. "G") for the Stage screen. */
   songKey?: string;
+  /**
+   * 2026-11-14: the My Song's background this item was last built with (songBgSig). When the song's
+   * background is changed in My Songs, the item (and the live screen) follow it.
+   */
+  songBg?: string;
+  /** 2026-11-14: changed with "Para sa schedule na ito lang" — never linked back to a My Song automatically. */
+  songUnlinked?: boolean;
 }
 
 export interface LiveState {
