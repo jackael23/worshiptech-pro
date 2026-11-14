@@ -30,6 +30,20 @@ export interface ImportedDeck {
   slides: SlideContent[];
   /** Short notes for the user (hidden slides skipped, pictures not kept, ...). */
   warnings: string[];
+  /** 2026-11-14: per slide (same order as `slides`, .pptx only) — used to split one deck into several songs. */
+  meta?: SlideMeta[];
+}
+
+/** 2026-11-14: what kind of slide this is, for lib/pptxSongImport.ts (finding where each song starts). */
+export interface SlideMeta {
+  /** Layout type from PowerPoint: "title" (Title Slide), "secHead" (Section Header), "obj", "blank", ... ("" = unknown). */
+  layout: string;
+  /** Text of the title placeholder(s) ("" = none). */
+  title: string;
+  /** "ctrTitle" when the title is the centered title of a Title Slide, "title" for a normal title. */
+  titleKind: "" | "title" | "ctrTitle";
+  /** Text of everything else on the slide (body, subtitle, text boxes). */
+  body: string;
 }
 
 // ---------- small XML helpers (namespace-agnostic: match on localName) ----------
@@ -327,6 +341,7 @@ interface TextBlock {
   x: number;
   order: number;
   isTitle: boolean;
+  phType: string;
 }
 
 /** Text shapes of a slide, top-to-bottom (titles without a position go first). Walks groups too. */
@@ -352,6 +367,7 @@ function slideTextBlocks(spTree: Element | null): { blocks: TextBlock[]; picture
           x: off ? Number(off.getAttribute("x") || 0) : 0,
           order: order++,
           isTitle,
+          phType,
         });
       } else if (c.localName === "graphicFrame") {
         // tables: read cell text row by row
@@ -364,7 +380,7 @@ function slideTextBlocks(spTree: Element | null): { blocks: TextBlock[]; picture
         const text = rows.filter(Boolean).join("\n");
         if (text) {
           const off = path(c, "xfrm", "off");
-          blocks.push({ text, y: Number(off?.getAttribute("y") || Number.MAX_SAFE_INTEGER), x: Number(off?.getAttribute("x") || 0), order: order++, isTitle: false });
+          blocks.push({ text, y: Number(off?.getAttribute("y") || Number.MAX_SAFE_INTEGER), x: Number(off?.getAttribute("x") || 0), order: order++, isTitle: false, phType: "" });
         } else pictures++;
       } else if (c.localName === "pic") {
         pictures++;
@@ -420,6 +436,7 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
   const themeCache = new Map<string, { theme: Theme; clrMap: ClrMap; bg: Background | null }>();
   const layoutBgCache = new Map<string, Background | null>();
   const slides: SlideContent[] = [];
+  const meta: SlideMeta[] = [];
   const warnings: string[] = [];
   let hidden = 0;
   let pictureOnly = 0;
@@ -491,6 +508,13 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
       textColor: bg.light !== undefined && bg.light > 0.6 ? "#0f172a" : undefined,
       notes: notes || undefined,
     });
+    const titleBlocks = blocks.filter((b) => b.isTitle);
+    meta.push({
+      layout: layoutDoc?.documentElement.getAttribute("type") || "",
+      title: titleBlocks.map((b) => b.text).join("\n"),
+      titleKind: titleBlocks.some((b) => b.phType === "ctrTitle") ? "ctrTitle" : titleBlocks.length ? "title" : "",
+      body: blocks.filter((b) => !b.isTitle).map((b) => b.text).join("\n\n"),
+    });
   }
 
   if (slides.length === 0) throw new Error(hidden ? "Naka-hide lahat ng slide sa file na ito." : "Walang mabasang slide sa file na ito.");
@@ -502,7 +526,7 @@ export async function readPptx(file: File | Blob, fileName: string): Promise<Imp
       }. Para eksakto ang itsura, i-export ang PPT bilang PNG at gamitin ang Images.`,
     );
   }
-  return { name: fileName.replace(/\.pptx$/i, "").slice(0, 80) || "Presentation", kind: "pptx", slides, warnings };
+  return { name: fileName.replace(/\.pptx$/i, "").slice(0, 80) || "Presentation", kind: "pptx", slides, warnings, meta };
 }
 
 // ---------- B. picture slides ----------
