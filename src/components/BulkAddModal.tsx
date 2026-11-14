@@ -25,6 +25,8 @@ interface BulkAddModalProps {
   initialSongs?: BulkSong[];
   /** review mode: short note, e.g. "3 file ang nilaktawan (hindi lyrics file)". */
   note?: string;
+  /** 2026-11-14: optional button after the note (PowerPoint: "Huwag hatiin" / "Hatiin ang mga kanta"). */
+  noteAction?: { label: string; onClick: () => void };
   currentSongs: StoredSong[];
   onSave: (drafts: SongDraft[]) => void;
   onClose: () => void;
@@ -66,7 +68,7 @@ const bgLabel = (bgId?: string) => (!bgId ? "Default" : sampleBackground(bgId)?.
 const isDesktop = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(min-width: 1024px)").matches;
 const smallBtn = "tap-target text-xs px-2 py-1 rounded-md border border-line text-fg-muted hover:bg-surface-3 inline-flex items-center gap-1";
 
-export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, note, currentSongs, onSave, onClose }) => {
+export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, note, noteAction, currentSongs, onSave, onClose }) => {
   const [text, setText] = useState("");
   const deferredText = useDeferredValue(text);
   const [reviewSongs, setReviewSongs] = useState<BulkSong[]>(initialSongs || []);
@@ -318,7 +320,17 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
                 </span>
               )}
             </div>
-            {note && <p className="text-xs text-fg-subtle flex gap-1.5"><Info className="w-4 h-4 shrink-0" />{note}</p>}
+            {note && (
+              <p className="text-xs text-fg-subtle flex flex-wrap items-start gap-1.5">
+                <Info className="w-4 h-4 shrink-0" />
+                <span className="flex-1 min-w-0">{note}</span>
+                {noteAction && (
+                  <button type="button" onClick={noteAction.onClick} className={smallBtn} data-testid="bulk-note-action">
+                    {noteAction.label}
+                  </button>
+                )}
+              </p>
+            )}
             {parsed.error && <p className="text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5">{parsed.error}</p>}
             {notice && <p role="status" className="notice-ok text-xs">{notice}</p>}
 
