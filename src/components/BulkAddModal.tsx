@@ -282,7 +282,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
           }`}
         >
           {mode === "paste" && (
-            <div className="flex flex-col lg:min-h-0 gap-2">
+            <div className="flex flex-col lg:min-h-0 lg:overflow-y-auto lg:-mr-2 lg:pr-2 gap-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-fg">I-paste ang mga kanta</span>
                 <button type="button" onClick={() => setText((t) => (t.trim() ? t : EXAMPLE))} disabled={!!text.trim()} className={`${smallBtn} disabled:opacity-40`}>
@@ -295,7 +295,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
                 onChange={(e) => setText(e.target.value)}
                 onSelect={syncFromCaret}
                 spellCheck={false}
-                className="flex-1 min-h-[16rem] w-full bg-canvas text-fg placeholder:text-fg-subtle px-3 py-2 rounded-lg border border-line font-mono text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                className="flex-1 min-h-[16rem] [@media(max-height:820px)]:min-h-[10rem] w-full bg-canvas text-fg placeholder:text-fg-subtle px-3 py-2 rounded-lg border border-line font-mono text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
                 placeholder={"Title ng kanta\nAuthor: (optional)\nKey: (optional)\n\nVerse 1\nUnang linya...\n\nChorus\nLinya ng chorus...\n---\nSusunod na kanta\n..."}
                 data-testid="bulk-text"
               />
