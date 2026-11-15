@@ -15,11 +15,12 @@
  * Talks to the local server (remoteServer.ts) — Server-Sent Events in, small POSTs out.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, ListOrdered, MonitorPlay, StickyNote, AlertTriangle, LogOut, Image as ImageIcon, Music2, Minus, Plus, Library, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, ListOrdered, MonitorPlay, StickyNote, AlertTriangle, LogOut, Image as ImageIcon, Music2, Minus, Plus, Library, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X, Megaphone } from "lucide-react";
 import { ChordSheet, nextPreview } from "./ChordSheet";
 import { transposeKey } from "../lib/chords";
 import { LiveMainScreen } from "./LiveScreen";
 import { SlideScreen } from "./SlideScreen";
+import { StageView } from "./StageScreen";
 import type { RemoteCmd, RemoteSnapshot, RemoteLibrary, BibleLookupResult } from "../lib/remoteLink";
 import { BIBLE_BOOKS } from "../lib/bibleBooks";
 
@@ -288,7 +289,9 @@ export const RemoteControl: React.FC = () => {
           >
             <Icon className="h-5 w-5" />
             {label}
-            {id === "alert" && live?.nurseryAlertActive && <span className="absolute right-[30%] top-2 h-2 w-2 rounded-full bg-live" />}
+            {id === "alert" && (live?.nurseryAlertActive || live?.stageMessageActive) && (
+              <span className={`absolute right-[30%] top-2 h-2 w-2 rounded-full ${live.nurseryAlertActive ? "bg-live" : "bg-amber-400"}`} />
+            )}
             {id === "live" && live?.isLive && !live.isBlackout && <span className="absolute right-[30%] top-2 h-2 w-2 rounded-full bg-live" />}
           </button>
         ))}
@@ -964,11 +967,41 @@ const NotesTab: React.FC<{ snap: RemoteSnapshot; clock: string }> = ({ snap, clo
   );
 };
 
-const AlertTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
+// 2026-11-15 (Mira): Alert tab = Projector (nursery ticker, congregation) or Stage (announcement for the musicians)
+const AlertTab: React.FC<TabProps> = (props) => {
+  const [target, setTarget] = useState<"projector" | "stage">("projector");
+  return (
+    <div className="mx-auto max-w-xl space-y-3 p-3">
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-3 p-1" role="tablist" aria-label="Saan ipapakita">
+        {(
+          [
+            ["projector", "Projector", "congregation"],
+            ["stage", "Stage", "musicians"],
+          ] as const
+        ).map(([id, label, sub]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={target === id}
+            onClick={() => setTarget(id)}
+            className={`flex h-12 flex-col items-center justify-center rounded-lg text-sm font-semibold leading-tight ${target === id ? "bg-surface text-accent-text shadow-sm" : "text-fg-muted"}`}
+            data-testid={`remote-alert-${id}`}
+          >
+            {label}
+            <span className="text-xs font-normal opacity-80">{sub}</span>
+          </button>
+        ))}
+      </div>
+      {target === "projector" ? <ProjectorAlert {...props} /> : <StageAlert {...props} />}
+    </div>
+  );
+};
+
+const ProjectorAlert: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
   const { live } = snap;
   const [text, setText] = useState(live.nurseryAlertText || "");
   return (
-    <div className="mx-auto max-w-xl space-y-3 p-3">
+    <div className="space-y-3">
       <div className={live.nurseryAlertActive ? "notice-warn" : "notice-info"} role="status">
         {live.nurseryAlertActive ? (
           <>
@@ -996,6 +1029,66 @@ const AlertTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
         </button>
         <button disabled={disabled || !live.nurseryAlertActive} onClick={() => cmd({ type: "alert", text: "", show: false })} className="btn btn-danger h-14 rounded-xl text-sm">
           Hide alert
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const STAGE_PRESETS = ["Ulitin ang chorus", "Last chorus", "Bridge", "Slow down", "Key up", "Tapusin na"];
+const STAGE_PREVIEW_PREFS = { transpose: 0, size: 1, chords: true };
+
+/** 2026-11-15 (Mira): announcement shown only on the Stage screen (TV of the musicians). */
+const StageAlert: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
+  const { live } = snap;
+  const [text, setText] = useState("");
+  const [blink, setBlink] = useState(true);
+  const clock = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const t = text.trim();
+  return (
+    <div className="space-y-3">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl ring-1 ring-line" data-testid="remote-stage-preview">
+        <StageView state={live} prefs={STAGE_PREVIEW_PREFS} clock={clock} draft={text} />
+      </div>
+      <div className={live.stageMessageActive ? "notice-warn" : "notice-info"} role="status">
+        {live.stageMessageActive ? (
+          <>
+            <b>Nasa Stage:</b> {live.stageMessageText}
+          </>
+        ) : (
+          "Walang announcement sa Stage screen."
+        )}
+      </div>
+      <label htmlFor="remote-stage-msg" className="eyebrow block">
+        Mensahe sa musicians
+      </label>
+      <input
+        id="remote-stage-msg"
+        type="text"
+        value={text}
+        maxLength={200}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="hal. Ulitin ang chorus"
+        className="input h-12 w-full text-base"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        {STAGE_PRESETS.map((p) => (
+          <button key={p} onClick={() => setText(p)} aria-pressed={text === p} className={`btn h-12 rounded-xl text-sm ${text === p ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-secondary"}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
+        <input type="checkbox" checked={blink} onChange={() => setBlink((b) => !b)} className="h-4 w-4 accent-[var(--c-accent)]" />
+        Kumislap pag bagong labas
+      </label>
+      <div className="grid grid-cols-[2fr_1fr] gap-2">
+        <button disabled={disabled || !t} onClick={() => cmd({ type: "stage-msg", text: t, show: true, blink })} className="btn btn-primary h-14 rounded-xl text-sm" data-testid="remote-stage-send">
+          <Megaphone className="h-4 w-4" />
+          {live.stageMessageActive ? "Update sa Stage" : "Send sa Stage"}
+        </button>
+        <button disabled={disabled || !live.stageMessageActive} onClick={() => cmd({ type: "stage-msg", text: "", show: false, blink: false })} className="btn btn-danger h-14 rounded-xl text-sm">
+          Hide
         </button>
       </div>
     </div>

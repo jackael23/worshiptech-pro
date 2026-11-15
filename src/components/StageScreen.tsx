@@ -8,23 +8,28 @@
  *    a small tag at the top says what the projector is doing.
  *  - Transpose, text size and chords on/off are saved in this window's browser storage.
  *  - Fullscreen: click or Enter. PgDn, ↑/↓, ←/→, Ctrl+B/C/L pressed here run in the app.
+ *
+ * 2026-11-15 (Mira): the screen itself is <StageView>, also used by the Simulator's "Stage monitor" preview,
+ * so the operator sees exactly what the musicians see. Sizes are in cqmin (the box, not the window).
+ * Stage announcement (stageMessage*) = yellow banner on top, musicians only; the preview can also show a DRAFT.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Maximize, Maximize2, Minimize2, Minus, Plus, Music2 } from "lucide-react";
+import { Maximize, Maximize2, Minimize2, Minus, Plus, Music2, Megaphone } from "lucide-react";
 import type { LiveState } from "../types";
 import { openLiveChannel, isForwardedKey, LiveMessage, OUTPUT_PING_MS } from "../lib/liveChannel";
 import { transposeKey } from "../lib/chords";
 import { ChordSheet, nextPreview } from "./ChordSheet";
 
-const PREFS_KEY = "wtp.stageScreen.v1";
-interface StagePrefs {
+export const STAGE_PREFS_KEY = "wtp.stageScreen.v1";
+const PREFS_KEY = STAGE_PREFS_KEY;
+export interface StagePrefs {
   transpose: number; // -11..11 semitones
   size: number; // 0.6..1.8 × base text size
   chords: boolean;
 }
 const DEFAULT_PREFS: StagePrefs = { transpose: 0, size: 1, chords: true };
 
-function loadPrefs(): StagePrefs {
+export function loadStagePrefs(): StagePrefs {
   try {
     const v = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
     const n = (x: unknown, min: number, max: number, d: number) => (typeof x === "number" && isFinite(x) ? Math.min(max, Math.max(min, x)) : d);
@@ -37,7 +42,7 @@ function loadPrefs(): StagePrefs {
 
 export const StageScreen: React.FC = () => {
   const [state, setState] = useState<LiveState | null>(null);
-  const [prefs, setPrefs] = useState<StagePrefs>(loadPrefs);
+  const [prefs, setPrefs] = useState<StagePrefs>(loadStagePrefs);
   const [showUi, setShowUi] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [clock, setClock] = useState("");
@@ -130,68 +135,15 @@ export const StageScreen: React.FC = () => {
   };
   const setP = (p: Partial<StagePrefs>) => setPrefs((prev) => ({ ...prev, ...p }));
 
-  const live = state && state.isLive && (state.currentSlideText || state.currentSlideImage);
-  const key = state?.songKey ? transposeKey(state.songKey, prefs.transpose) : "";
-  const projector = !state ? "" : state.isBlackout ? "BLACK" : state.isLogo ? "LOGO" : state.isClearText ? "TEXT OFF" : "";
-  const next = state ? nextPreview(state) : null;
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
     <div
-      className={`fixed inset-0 flex flex-col bg-black p-[2.5vmin] font-sans text-white ${showUi ? "" : "cursor-none"}`}
+      className={`fixed inset-0 bg-black ${showUi ? "" : "cursor-none"}`}
       onClick={enterFullscreen}
       data-testid="stage-screen"
     >
-      {/* top bar: section · key · projector status · clock */}
-      <div className="flex items-center gap-[2vmin] border-b border-zinc-800 pb-[1.2vmin] font-mono text-[3vmin] text-zinc-400">
-        <span className="min-w-0 flex-1 truncate">
-          <span className="font-semibold text-white">{live ? state!.currentSlideLabel || "—" : "STAGE"}</span>
-          {key && (
-            <span className="ml-[2vmin] text-amber-300">
-              Key {key}
-              {prefs.transpose ? ` (${prefs.transpose > 0 ? "+" : ""}${prefs.transpose})` : ""}
-            </span>
-          )}
-        </span>
-        {projector && <span className="rounded bg-red-900/70 px-[1.2vmin] text-[2.4vmin] font-semibold text-red-100">PROJECTOR: {projector}</span>}
-        <span className="rounded bg-zinc-900 px-[1.2vmin] tabular-nums text-white">{clock}</span>
-      </div>
-
-      {/* current slide */}
-      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-[2vmin]" style={{ fontSize: `${5.2 * prefs.size}vmin` }}>
-        {!state ? (
-          <p className="text-center text-[0.5em] text-zinc-500">Naghihintay sa WorshipTech-Pro… Buksan ang Simulator sa kabilang window.</p>
-        ) : !live ? (
-          <p className="text-center text-[0.6em] text-zinc-500">Standby</p>
-        ) : state.currentSlideText ? (
-          <ChordSheet
-            text={state.currentSlideText}
-            chords={state.currentSlideChords}
-            transpose={prefs.transpose}
-            songKey={state.songKey}
-            showChords={prefs.chords}
-            className="font-semibold"
-          />
-        ) : (
-          <p className="text-center text-[0.6em] text-zinc-400">(larawan sa projector)</p>
-        )}
-        {live && state!.currentSlideNotes && (
-          <p className="mt-[0.6em] whitespace-pre-line text-[0.5em] text-emerald-300">
-            <span className="font-semibold text-sky-400">NOTES: </span>
-            {state!.currentSlideNotes}
-          </p>
-        )}
-      </div>
-
-      {/* next slide */}
-      <div className="border-t border-zinc-800 pt-[1.2vmin]" style={{ fontSize: `${3 * prefs.size}vmin` }}>
-        <span className="font-mono text-[0.8em] font-semibold text-sky-400">NEXT</span>
-        {live && next ? (
-          <ChordSheet text={next.text} chords={next.chords} transpose={prefs.transpose} songKey={state!.songKey} showChords={prefs.chords} className="text-yellow-200" />
-        ) : (
-          <span className="ml-[1.5vmin] text-zinc-500">{live ? "(End)" : "—"}</span>
-        )}
-      </div>
+      <StageView state={state} prefs={prefs} clock={clock} />
 
       {!isFullscreen && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 flex justify-center">
@@ -245,6 +197,109 @@ export const StageScreen: React.FC = () => {
           {isFullscreen ? "Exit" : "Fullscreen"}
         </button>
       </div>
+    </div>
+  );
+};
+
+/**
+ * 2026-11-15 (Mira): what the Stage screen shows — used by the Stage window (whole window) and by the
+ * Simulator's "Stage monitor" preview (a 16:9 box). All sizes are cqmin of this box.
+ *  draft = operator preview only: the announcement being typed, drawn as a dashed "DRAFT" strip.
+ */
+export const StageView: React.FC<{
+  state: LiveState | null;
+  prefs: StagePrefs;
+  clock: string;
+  draft?: string;
+  className?: string;
+}> = ({ state, prefs, clock, draft, className = "absolute inset-0" }) => {
+  const live = state && state.isLive && (state.currentSlideText || state.currentSlideImage);
+  const key = state?.songKey ? transposeKey(state.songKey, prefs.transpose) : "";
+  const projector = !state ? "" : state.isBlackout ? "BLACK" : state.isLogo ? "LOGO" : state.isClearText ? "TEXT OFF" : "";
+  const next = state ? nextPreview(state) : null;
+  const message = state?.stageMessageActive && state.stageMessageText?.trim() ? state.stageMessageText.trim() : "";
+  const draftText = draft?.trim() && draft.trim() !== message ? draft.trim() : "";
+
+  return (
+    <div className={`${className} overflow-hidden bg-black font-sans text-white [container-type:size]`}>
+      <div className="flex h-full flex-col p-[2.5cqmin]">
+        {/* announcement for the musicians (never on the projector); blinks again on every new Send */}
+        {message && (
+          <div
+            key={state?.stageMessageAt ?? 0}
+            role="status"
+            className={`mb-[1.8cqmin] flex items-center gap-[2cqmin] rounded-[1.4cqmin] bg-amber-400 px-[2.6cqmin] py-[1.4cqmin] text-[5.4cqmin] font-bold leading-tight text-zinc-950 ${
+              state?.stageMessageBlink ? "stage-msg-blink" : ""
+            }`}
+            data-testid="stage-message"
+          >
+            <Megaphone className="h-[1em] w-[1em] shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1 break-words">{message}</span>
+          </div>
+        )}
+
+        {/* top bar: section · key · projector status · clock */}
+        <div className="flex items-center gap-[2cqmin] border-b border-zinc-800 pb-[1.2cqmin] font-mono text-[3cqmin] text-zinc-400">
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-semibold text-white">{live ? state!.currentSlideLabel || "—" : "STAGE"}</span>
+            {key && (
+              <span className="ml-[2cqmin] text-amber-300">
+                Key {key}
+                {prefs.transpose ? ` (${prefs.transpose > 0 ? "+" : ""}${prefs.transpose})` : ""}
+              </span>
+            )}
+          </span>
+          {projector && <span className="rounded bg-red-900/70 px-[1.2cqmin] text-[2.4cqmin] font-semibold text-red-100">PROJECTOR: {projector}</span>}
+          <span className="rounded bg-zinc-900 px-[1.2cqmin] tabular-nums text-white">{clock}</span>
+        </div>
+
+        {/* current slide */}
+        <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-[2cqmin]" style={{ fontSize: `${5.2 * prefs.size}cqmin` }}>
+          {!state ? (
+            <p className="text-center text-[0.5em] text-zinc-500">Naghihintay sa WorshipTech-Pro… Buksan ang Simulator sa kabilang window.</p>
+          ) : !live ? (
+            <p className="text-center text-[0.6em] text-zinc-500">Standby</p>
+          ) : state.currentSlideText ? (
+            <ChordSheet
+              text={state.currentSlideText}
+              chords={state.currentSlideChords}
+              transpose={prefs.transpose}
+              songKey={state.songKey}
+              showChords={prefs.chords}
+              className="font-semibold"
+            />
+          ) : (
+            <p className="text-center text-[0.6em] text-zinc-400">(larawan sa projector)</p>
+          )}
+          {live && state!.currentSlideNotes && (
+            <p className="mt-[0.6em] whitespace-pre-line text-[0.5em] text-emerald-300">
+              <span className="font-semibold text-sky-400">NOTES: </span>
+              {state!.currentSlideNotes}
+            </p>
+          )}
+        </div>
+
+        {/* next slide */}
+        <div className="border-t border-zinc-800 pt-[1.2cqmin]" style={{ fontSize: `${3 * prefs.size}cqmin` }}>
+          <span className="font-mono text-[0.8em] font-semibold text-sky-400">NEXT</span>
+          {live && next ? (
+            <ChordSheet text={next.text} chords={next.chords} transpose={prefs.transpose} songKey={state!.songKey} showChords={prefs.chords} className="text-yellow-200" />
+          ) : (
+            <span className="ml-[1.5cqmin] text-zinc-500">{live ? "(End)" : "—"}</span>
+          )}
+        </div>
+      </div>
+
+      {/* operator preview only: the announcement being typed (not on the TV yet) */}
+      {draftText && (
+        <div
+          className="absolute inset-x-[2.5cqmin] bottom-[8cqmin] flex items-center gap-[1.8cqmin] rounded-[1.2cqmin] border-2 border-dashed border-amber-400 bg-zinc-900/95 px-[2cqmin] py-[1.2cqmin] text-[3.6cqmin] font-semibold text-amber-200"
+          data-testid="stage-draft"
+        >
+          <span className="shrink-0 rounded bg-amber-400 px-[0.8cqmin] font-mono text-[0.7em] text-zinc-950">DRAFT</span>
+          <span className="min-w-0 flex-1 truncate">{draftText}</span>
+        </div>
+      )}
     </div>
   );
 };

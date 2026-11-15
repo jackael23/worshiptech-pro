@@ -9,6 +9,8 @@ AI assistant at practice simulator para sa mga church media volunteer na gumagam
   - **Songs:** public-domain hymns; **My Songs** (sariling lyrics, naka-save lang sa browser); import ng SongSelect `.txt` / `.usr` / `.bin` at ChordPro; export/import ng backup `.json`; Reference list (title/artist lang, walang lyrics).
   - **Bibles:** sample verses (Ang Biblia, KJV, MBB maikling sipi) + **Import Bible** ng buong Bible mula sa `bibles/` (Ang Dating Biblia 1905, KJV — public domain). Browse aklat → kabanata → verses, o i-search ang reference (hal. `Juan 3:16`, `Awit 23`, `1 Cor 13:4-7`).
 - **Text style** — Simulator → Output → Text style: font, size (50–150%, auto-fit pa rin), Bold/Italic, kulay, alignment, outline/shadow. Global (naka-save sa browser) o sariling style bawat schedule item. Lumalabas agad sa Live, projector at phone.
+- **Stage screen (musicians)** — Simulator → Output → **Open Stage screen**: lyrics na may chords, key, next slide at orasan sa TV / second monitor ng musicians. Sa Live panel, ang **Stage monitor** tab ang eksaktong preview nito.
+  - **Stage announcement** — sa ibaba ng Live panel: mag-type o pumili ng preset (Ulitin ang chorus, Last chorus, Bridge, Slow down, Key up, Tapusin na) → **Send sa Stage**. Dilaw na banner sa taas ng Stage screen lang, hindi sa projector. Habang nagta-type, may dashed na **DRAFT** sa preview (laptop lang). Opsyonal na kumikislap pag bagong labas.
 - **Phone remote** — kontrolin ang Live gamit ang phone sa parehong WiFi (tingnan sa ibaba).
 - **Guides** — step-by-step na mga gabay (kanta, scripture, NDI/OBS, foldback).
 - **Hotkeys** — official EW7 shortcut list (may babala para sa EW6/2009).
@@ -41,7 +43,7 @@ Production build: `npm run build`, saka patakbuhin na may `NODE_ENV=production`:
    - **Live:** kasalukuyan + susunod na slide, Prev / Next, GO LIVE (preview ng laptop), Black / Clear / Logo
    - **Schedule:** tap = piliin, ▶ o double-tap = LIVE
    - **Notes:** malaking text para sa preacher / worship leader
-   - **Alert:** magpadala / magtago ng message ticker
+   - **Alert:** **Projector** = message ticker para sa congregation; **Stage** = announcement sa Stage screen ng musicians (may preview at DRAFT)
 
 Mga paalala:
 

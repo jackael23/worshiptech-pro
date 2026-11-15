@@ -11,6 +11,8 @@ export type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
   | { type: "alert"; text: string; show: boolean }
+  // 2026-11-15 (Mira): announcement on the Stage screen (musicians only)
+  | { type: "stage-msg"; text: string; show: boolean; blink: boolean }
   // 2026-11-08 (Mira): change the schedule from the phone + Bible verses (Library tab)
   | { type: "add-song"; songId: string; live: boolean }
   | { type: "remove"; itemId: string }

@@ -45,11 +45,12 @@ const RL = {
   HEARTBEAT_MS: 15000,
 };
 
-const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "add-song", "remove", "move", "bible-lookup", "add-verses"] as const;
+const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "stage-msg", "add-song", "remove", "move", "bible-lookup", "add-verses"] as const;
 type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
   | { type: "alert"; text: string; show: boolean }
+  | { type: "stage-msg"; text: string; show: boolean; blink: boolean }
   | { type: "add-song"; songId: string; live: boolean }
   | { type: "remove"; itemId: string }
   | { type: "move"; itemId: string; dir: "up" | "down" }
@@ -103,6 +104,11 @@ function cleanCmd(raw: unknown): RemoteCmd | null {
   if (type === "alert") {
     if (typeof c.text !== "string") return null;
     return { type, text: c.text.slice(0, RL.ALERT_MAX), show: c.show === true };
+  }
+  // 2026-11-15 (Mira): Stage screen announcement (musicians only)
+  if (type === "stage-msg") {
+    if (typeof c.text !== "string") return null;
+    return { type, text: c.text.slice(0, RL.ALERT_MAX), show: c.show === true, blink: c.blink === true };
   }
   // 2026-11-08 (Mira): schedule + Bible commands
   if (type === "add-song") {

@@ -173,6 +173,14 @@ export interface LiveState {
   foldbackEnabled: boolean;
   nurseryAlertText: string;
   nurseryAlertActive: boolean;
+  /**
+   * 2026-11-15 (Mira): announcement for the musicians — shown only on the Stage screen (never on the projector).
+   * stageMessageAt changes on every Send, so the Stage screen can blink again for a new message.
+   */
+  stageMessageText?: string;
+  stageMessageActive?: boolean;
+  stageMessageBlink?: boolean;
+  stageMessageAt?: number;
 }
 
 export interface WorkflowGuide {
