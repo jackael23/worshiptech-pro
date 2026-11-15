@@ -27,6 +27,7 @@ import {
   X,
   Settings2,
   Pencil,
+  Megaphone,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -45,6 +46,7 @@ import { BibleLibrary, Passage } from "./BibleLibrary";
 import { PresentationLibrary } from "./PresentationLibrary";
 import { SlideScreen } from "./SlideScreen";
 import { LiveMainScreen } from "./LiveScreen";
+import { StageView, loadStagePrefs, STAGE_PREFS_KEY, StagePrefs } from "./StageScreen";
 import { openOutputWindow, canUseSecondScreen, listScreens, loadScreenChoice, ScreenChoice, OutputKind } from "../lib/liveChannel";
 import type { StoredPresentation } from "../lib/presentationStore";
 import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
@@ -71,6 +73,12 @@ import { syncScheduleWithSongs, songSlides, retitle, slidesToLyrics, SONG_ID_RE,
 /** 2026-11-05: video background of an item ("vid-…"), unless the slide has its own (PowerPoint) background. */
 const videoOf = (item: ScheduleItem | undefined, slide?: SlideContent) =>
   item && !slide?.background && item.background && isVideoId(item.bgMediaId) ? item.bgMediaId : undefined;
+
+
+// 2026-11-15 (Mira): Stage announcement — quick picks, max length (same as the phone / server), blink switch key
+const STAGE_PRESETS = ["Ulitin ang chorus", "Last chorus", "Bridge", "Slow down", "Key up", "Tapusin na"];
+const STAGE_MSG_MAX = 200;
+const STAGE_BLINK_KEY = "wtp.stageMsgBlink.v1";
 
 interface WorkflowCanvasSimulatorProps {
   version: EasyWorshipVersion;
@@ -286,6 +294,24 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   const [previewOutputMode, setPreviewOutputMode] = useState<"main" | "foldback" | "ndi">("main");
   const [customAlertInput, setCustomAlertInput] = useState("Nursery: Parent #104 please come to Nursery");
   const [simulatedTime, setSimulatedTime] = useState("");
+  // 2026-11-15 (Mira): Stage announcement (musicians only) — draft text, blink switch (remembered),
+  // and the Stage window's transpose / size / chords (same browser storage) for the "Stage monitor" preview
+  const [stageMsgInput, setStageMsgInput] = useState("");
+  const [stageMsgBlink, setStageMsgBlink] = useState(() => {
+    try {
+      return localStorage.getItem(STAGE_BLINK_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [stagePrefs, setStagePrefs] = useState<StagePrefs>(loadStagePrefs);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STAGE_PREFS_KEY) setStagePrefs(loadStagePrefs());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   // 2026-10-20 (Jarvis): on phones/tablets (< lg) show one panel at a time instead of 3 squeezed panels.
   // 2026-10-28 (Jarvis): projector output window
   const [outputNotice, setOutputNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
@@ -633,6 +659,23 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     }));
   };
 
+  // 2026-11-15 (Mira): announcement on the Stage screen only (the projector ignores these fields)
+  const sendStageMessage = (text: string, blink: boolean) => {
+    const t = text.trim().slice(0, STAGE_MSG_MAX);
+    if (!t) return;
+    setLiveState((prev) => ({ ...prev, stageMessageText: t, stageMessageActive: true, stageMessageBlink: blink, stageMessageAt: Date.now() }));
+  };
+  const hideStageMessage = () => setLiveState((prev) => ({ ...prev, stageMessageActive: false }));
+  const toggleStageBlink = () =>
+    setStageMsgBlink((b) => {
+      try {
+        localStorage.setItem(STAGE_BLINK_KEY, b ? "0" : "1");
+      } catch {
+        /* storage blocked: just don't remember */
+      }
+      return !b;
+    });
+
   const handleMoveScheduleItem = (index: number, direction: "up" | "down") => {
     if ((direction === "up" && index === 0) || (direction === "down" && index === scheduleItems.length - 1)) return;
     const newItems = [...scheduleItems];
@@ -697,6 +740,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
           nurseryAlertText: cmd.text.trim() ? cmd.text : prev.nurseryAlertText,
           nurseryAlertActive: cmd.show && !!(cmd.text.trim() || prev.nurseryAlertText),
         }));
+        return;
+      case "stage-msg":
+        if (cmd.show) sendStageMessage(cmd.text, cmd.blink);
+        else hideStageMessage();
         return;
     }
   };
@@ -1359,33 +1406,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   {/* MAIN — same component as the projector window (2026-10-28) */}
                   {previewOutputMode === "main" && <LiveMainScreen liveState={shownLive} operator />}
 
-                  {/* FOLDBACK (stage confidence monitor) */}
+                  {/* FOLDBACK — 2026-11-15 (Mira): the real Stage screen (same component as the TV), plus the DRAFT announcement */}
                   {previewOutputMode === "foldback" && (
-                    <div className="relative flex aspect-video w-full flex-col justify-between bg-black p-[3cqw] font-sans [container-type:inline-size]">
-                      {liveState.isBlackout ? (
-                        <div className="m-auto font-mono text-xs text-zinc-500">BLACK · Ctrl+B</div>
-                      ) : (
-                        <>
-                          <div className="flex items-center justify-between border-b border-zinc-800 pb-[1.5cqw] font-mono text-[2.6cqw] text-zinc-400">
-                            <span>STAGE · {liveState.currentSlideLabel || "—"}</span>
-                            <span className="rounded bg-zinc-900 px-[1.5cqw] text-white tabular-nums">{simulatedTime}</span>
-                          </div>
-                          <div className="my-auto whitespace-pre-line text-[4.4cqw] font-semibold leading-tight text-white line-clamp-6">
-                            {liveState.currentSlideText || (liveState.currentSlideImage ? "(larawan sa screen)" : "No active lyrics")}
-                          </div>
-                          {/* 2026-10-28: speaker notes from PowerPoint (stage screen only) */}
-                          {liveState.currentSlideNotes && (
-                            <div className="mb-[1cqw] whitespace-pre-line text-[2.8cqw] text-emerald-300 line-clamp-2">
-                              <span className="font-semibold text-sky-400">NOTES: </span>
-                              {liveState.currentSlideNotes}
-                            </div>
-                          )}
-                          <div className="truncate border-t border-zinc-800 pt-[1.5cqw] text-[2.8cqw]">
-                            <span className="font-semibold text-sky-400">NEXT: </span>
-                            <span className="text-yellow-300">{liveState.nextSlideText ? liveState.nextSlideText.split("\n")[0] : "(End of song)"}</span>
-                          </div>
-                        </>
-                      )}
+                    <div className="relative aspect-video w-full" data-testid="stage-preview">
+                      <StageView state={liveState} prefs={stagePrefs} clock={simulatedTime.slice(0, 5)} draft={stageMsgInput} />
                     </div>
                   )}
 
@@ -1701,6 +1725,66 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   {liveState.nurseryAlertActive ? "Hide alert" : "Send alert"}
                 </button>
               </div>
+            </div>
+
+            {/* 2026-11-15 (Mira): Stage announcement — Stage screen only, never on the projector */}
+            <div className="border-t border-line pt-3" data-testid="stage-announce">
+              <div className="mb-1.5 flex items-center gap-2">
+                <label htmlFor="stage-msg" className="eyebrow inline-flex items-center gap-1.5">
+                  <Megaphone className="h-3.5 w-3.5" />
+                  Stage announcement
+                </label>
+                <span className="ml-auto text-xs text-fg-subtle">Musicians lang · wala sa projector</span>
+              </div>
+              <input
+                id="stage-msg"
+                type="text"
+                value={stageMsgInput}
+                maxLength={STAGE_MSG_MAX}
+                onChange={(e) => setStageMsgInput(e.target.value)}
+                onFocus={() => setPreviewOutputMode("foldback")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendStageMessage(stageMsgInput, stageMsgBlink);
+                  }
+                }}
+                placeholder="hal. Ulitin ang chorus"
+                className="input h-8 w-full text-xs"
+              />
+              <div className="mt-1.5 grid grid-cols-3 gap-1">
+                {STAGE_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => {
+                      setStageMsgInput(p);
+                      setPreviewOutputMode("foldback");
+                    }}
+                    aria-pressed={stageMsgInput === p}
+                    className={`btn h-7 px-1.5 text-xs ${stageMsgInput === p ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-secondary"}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <label className="mr-auto inline-flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
+                  <input type="checkbox" checked={stageMsgBlink} onChange={toggleStageBlink} className="h-3.5 w-3.5 accent-[var(--c-accent)]" />
+                  Kumislap pag bagong labas
+                </label>
+                <button onClick={() => sendStageMessage(stageMsgInput, stageMsgBlink)} disabled={!stageMsgInput.trim()} className="btn btn-primary" data-testid="stage-send">
+                  <Send className="h-3.5 w-3.5" />
+                  {liveState.stageMessageActive ? "Update sa Stage" : "Send sa Stage"}
+                </button>
+                <button onClick={hideStageMessage} disabled={!liveState.stageMessageActive} className="btn btn-danger" data-testid="stage-hide">
+                  Hide
+                </button>
+              </div>
+              <p className={`mt-1.5 inline-flex items-center gap-1.5 text-xs ${liveState.stageMessageActive ? "text-warn-text" : "text-fg-subtle"}`} role="status">
+                <span className={`h-1.5 w-1.5 rounded-full ${liveState.stageMessageActive ? "bg-warn" : "bg-fg-subtle"}`} />
+                {liveState.stageMessageActive ? `Nasa Stage screen: "${liveState.stageMessageText}"` : "Walang announcement sa Stage screen"}
+                {!stageCount && " · walang nakabukas na Stage screen"}
+              </p>
             </div>
           </div>
         </section>
