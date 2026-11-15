@@ -140,7 +140,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
 
         {/* Body — wide two-column layout; each column scrolls on its own on desktop */}
         <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden p-4 grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] gap-4">
-          <div className="flex flex-col gap-3 lg:min-h-0">
+          <div className="flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:-mr-2 lg:pr-2">
             <label className="block">
               <span className="text-xs font-semibold text-fg">Title *</span>
               <input ref={firstFieldRef} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={MY_SONGS_LIMITS.MAX_TITLE} className={inputCls} placeholder="hal. What a Beautiful Name" />
@@ -181,7 +181,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
               <span className="text-xs font-semibold text-fg">Copyright</span>
               <input value={copyright} onChange={(e) => setCopyright(e.target.value)} maxLength={300} className={inputCls} placeholder="hal. © 2016 Hillsong Music Publishing" />
             </label>
-            <label className="flex flex-col flex-1 lg:min-h-0">
+            <label className="flex flex-col flex-1">
               <span className="text-xs font-semibold text-fg">Lyrics *</span>
               <textarea
                 ref={lyricsRef}
@@ -190,7 +190,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
                 onSelect={syncPickedFromCaret}
                 maxLength={MY_SONGS_LIMITS.MAX_LYRICS}
                 spellCheck={false}
-                className={`${inputCls} flex-1 min-h-[18rem] font-mono text-sm leading-relaxed resize-none`}
+                className={`${inputCls} flex-1 min-h-[18rem] [@media(max-height:820px)]:min-h-[11rem] font-mono text-sm leading-relaxed resize-none`}
                 placeholder={"Verse 1\n[G]Unang [C]linya...\nIkalawang linya...\n\nChorus\nLinya ng chorus...\n\n(blank line = bagong slide, [G] = chord)"}
                 data-testid="lyrics-input"
               />
