@@ -68,7 +68,7 @@
   --c-live: #d9363b; /* white text ≈4.6:1 */
   --c-live-soft: #fdeeee;
   --c-live-text: #b4232a;
-  --c-ok: #2f8f5b;
+  --c-ok: #237a4a; /* ≈5.3:1 on white — readable as small text too */
   --c-ok-soft: #eaf6ef;
   --c-warn: #d97706;
   --c-warn-soft: #fffbeb;
