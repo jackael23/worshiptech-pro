@@ -371,10 +371,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       const g = grid.getBoundingClientRect();
       const a = libRef.current?.getBoundingClientRect();
       const b = schedRef.current?.getBoundingClientRect();
-      if (a && b && a.width && b.width) setEdges([a.right - g.left, b.right - g.left]);
+      const c = outRef.current?.getBoundingClientRect();
+      // 2026-11-15: cards have a gap between them now → the handle sits in the middle of the gap
+      if (a && b && c && a.width && b.width) setEdges([(a.right + b.left) / 2 - g.left, (b.right + c.left) / 2 - g.left]);
     };
     const ro = new ResizeObserver(measure);
-    [grid, libRef.current, schedRef.current].forEach((el) => el && ro.observe(el));
+    [grid, libRef.current, schedRef.current, outRef.current].forEach((el) => el && ro.observe(el));
     measure();
     return () => ro.disconnect();
   }, []);
@@ -959,12 +961,17 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   ];
 
   return (
-    <div className="panel flex h-full min-h-[30rem] w-full flex-col overflow-hidden">
-      {/* ===== Toolbar ===== */}
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-line px-3 sm:px-4">
+    // 2026-11-15 (Sanctuary): on desktop the shell is see-through and Library / Schedule / Output are 3 separate cards
+    <div className="panel sim-shell flex h-full min-h-[30rem] w-full flex-col overflow-hidden">
+      {/* ===== Toolbar ===== (desktop: Main/Foldback/NDI + clock moved to the app bar; this row only shows when there is a status badge) */}
+      <div
+        className={`flex h-12 shrink-0 items-center justify-between gap-3 border-b border-line px-3 sm:px-4 lg:h-9 lg:border-0 lg:px-1 ${
+          outputCount > 0 || (remote.availability === "ready" && !remote.active) || (remote.active && remote.phones > 0) ? "" : "lg:hidden"
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-2.5">
-          <Layers className="h-4 w-4 shrink-0 text-accent" />
-          <h2 className="section-title">Simulator</h2>
+          <Layers className="h-4 w-4 shrink-0 text-accent lg:hidden" />
+          <h2 className="section-title lg:hidden">Simulator</h2>
           {outputCount > 0 && (
             <span
               className="badge border-transparent bg-ok-soft text-fg"
@@ -991,23 +998,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               Phone{remote.phones > 1 ? ` (${remote.phones})` : ""}
             </span>
           )}
-          {/* simulated outputs (not real connections) */}
-          <div className="ml-2 hidden items-center gap-3 border-l border-line pl-3 text-xs text-fg-muted xl:flex" title="Simulated outputs">
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${liveOnAir ? "bg-live" : "bg-fg-subtle"}`} />
-              Main
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${liveState.foldbackEnabled ? "bg-ok" : "bg-fg-subtle"}`} />
-              Foldback
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${liveState.ndiActive ? "bg-ok" : "bg-fg-subtle"}`} />
-              NDI
-            </span>
-          </div>
+          {/* simulated outputs (Main / Foldback / NDI) are shown in the app bar (Header) since 2026-11-15 */}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
           <span className="hidden font-mono text-xs tabular-nums text-fg-subtle sm:inline">{simulatedTime}</span>
           <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="btn btn-ghost tap-target">
             <Sparkles className="h-3.5 w-3.5 text-accent" />
@@ -1050,7 +1043,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       {/* ===== 3 panels ===== */}
       <div
         ref={gridRef}
-        className={`relative grid min-h-0 flex-1 grid-cols-1 grid-rows-1 overflow-hidden ${
+        className={`relative grid min-h-0 flex-1 grid-cols-1 grid-rows-1 overflow-hidden lg:gap-4 lg:overflow-visible ${
           layout.cols
             ? "lg:grid-cols-[var(--wtp-cols)]"
             : "lg:grid-cols-[minmax(16rem,0.95fr)_minmax(20rem,1.3fr)_minmax(21rem,1.3fr)] 2xl:grid-cols-[minmax(16rem,0.8fr)_minmax(20rem,1.05fr)_minmax(21rem,1.75fr)]"
@@ -1074,10 +1067,14 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             />
           ))}
         {/* ---------- PANEL 1: LIBRARY ---------- */}
-        <section ref={libRef} className={`${panelVis("library")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Library">
-          <div className="space-y-2.5 border-b border-line p-3">
+        <section ref={libRef} className={`${panelVis("library")} sim-card min-h-0 flex-col overflow-hidden`} aria-label="Library">
+          <div className="space-y-2.5 border-b border-line p-3 lg:px-4 lg:pt-3.5">
             <div className="hidden items-center justify-between lg:flex">
               <span className="section-title">Library</span>
+              <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="btn btn-ghost btn-sm" title="Magtanong sa Chat">
+                <Sparkles className="h-3.5 w-3.5 text-accent-text" />
+                Ask in Chat
+              </button>
             </div>
             <div className="seg grid w-full grid-cols-4" role="tablist" aria-label="Library">
               {libraryTabs.map(({ id, label, icon: Icon, title }) => (
@@ -1133,8 +1130,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         </section>
 
         {/* ---------- PANEL 2: SCHEDULE + SLIDES ---------- */}
-        <section ref={schedRef} className={`${panelVis("schedule")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Schedule">
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
+        <section ref={schedRef} className={`${panelVis("schedule")} sim-card min-h-0 flex-col overflow-hidden`} aria-label="Schedule">
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3 lg:h-14 lg:px-4">
             <span className="section-title">
               Schedule <span className="ml-1 font-mono text-xs font-normal text-fg-subtle">{scheduleItems.length}</span>
             </span>
@@ -1331,8 +1328,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         {/* 2026-10-29 (Jarvis): setup tools (projector / phone / text style) moved into a compact
             toolbar with popovers, so Preview + Live + GO LIVE stay on screen. Preview | Live sit
             side by side when the column is wide enough (like EasyWorship / ProPresenter). */}
-        <section ref={outRef} className={`${panelVis("live")} @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
-          <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
+        <section ref={outRef} className={`${panelVis("live")} sim-card @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
+          <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3 lg:h-14 lg:px-4">
             {/* 2026-11-07: label hidden on narrow columns so the 4th tool (Theme) + Main/Foldback/NDI still fit */}
             <span className="section-title mr-1 hidden @[26rem]/out:inline">Output</span>
             {([
@@ -1402,7 +1399,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   <span className={`badge ${liveState.isBlackout ? "" : liveState.isLive ? "badge-live" : ""}`}>{liveState.isLive ? liveStateLabel : "Standby"}</span>
                 </div>
 
-                <div className={`overflow-hidden rounded-lg ring-1 ${liveOnAir ? "ring-live/60" : "ring-line"}`} data-testid="live-monitor">
+                <div className={`overflow-hidden rounded-lg ${liveOnAir ? "live-frame" : "ring-1 ring-line"}`} data-testid="live-monitor">
                   {/* MAIN — same component as the projector window (2026-10-28) */}
                   {previewOutputMode === "main" && <LiveMainScreen liveState={shownLive} operator />}
 

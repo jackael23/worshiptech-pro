@@ -35,7 +35,23 @@ interface HeaderProps {
   setActiveTab: (tab: AppTab) => void;
   appearance: Appearance;
   onAppearanceChange: (a: Appearance) => void;
+  /** 2026-11-15: simulated outputs (Simulator tab only) — moved here from the Simulator toolbar, like the mockup. */
+  status?: { onAir: boolean; foldback: boolean; ndi: boolean } | null;
 }
+
+/** Small clock for the app bar (desktop, Simulator tab). */
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+const StatusClock: React.FC = () => <span className="hidden font-mono text-xs tabular-nums text-fg-subtle xl:inline">{useClock()}</span>;
+
+const chipCls = "inline-flex h-8 items-center gap-2 rounded-md border border-line px-3 text-xs font-medium text-fg-muted";
 
 /** Full screen for the whole app (Fullscreen API). Hidden where the browser can't do it (e.g. iPhone Safari). */
 function useFullscreen() {
@@ -53,20 +69,22 @@ function useFullscreen() {
   return { supported, on, toggle };
 }
 
-const selectCls =
-  "h-8 rounded-md border border-line bg-surface-2 pl-2.5 pr-7 text-xs font-medium text-fg hover:border-line-strong focus:outline-none focus:border-accent cursor-pointer appearance-none bg-no-repeat bg-[length:12px] bg-[right_0.5rem_center]";
+// 2026-11-15: same dropdown without its own box (sits inside the grouped box)
+const groupSelectCls =
+  "h-8 rounded-md border border-transparent bg-transparent pl-2.5 pr-7 text-xs font-medium text-fg hover:bg-surface-3 focus:outline-none focus:border-accent cursor-pointer appearance-none bg-no-repeat bg-[length:12px] bg-[right_0.5rem_center]";
 // neutral gray chevron that reads in both themes
 const chevron = {
   backgroundImage:
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b8b94' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
 };
 
-export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, appearance, onAppearanceChange }) => {
+export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, appearance, onAppearanceChange, status }) => {
   const [showAppearance, setShowAppearance] = useState(false);
   const fs = useFullscreen();
   return (
-    <header className="relative z-50 shrink-0 border-b border-line bg-surface">
-      <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5">
+    // 2026-11-15 (Sanctuary mockup): desktop app bar sits on the canvas (no bar color), controls are grouped boxes
+    <header className="relative z-50 shrink-0 border-b border-line bg-surface lg:border-transparent lg:bg-transparent">
+      <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5 lg:h-16 lg:px-4">
         {/* Brand */}
         <div className="flex shrink-0 items-center gap-2.5">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-on-accent shadow-sm">
@@ -79,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
         </div>
 
         {/* Desktop nav */}
-        <nav className="ml-3 hidden items-center gap-1 border-l border-line pl-4 lg:flex" aria-label="Main">
+        <nav className="ml-4 hidden items-center gap-1 rounded-lg border border-line bg-surface-2 p-1 lg:flex" aria-label="Main">
           {NAV_ITEMS.map(({ id, label, icon: Icon, hint }) => {
             const active = activeTab === id;
             return (
@@ -88,11 +106,11 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
                 onClick={() => setActiveTab(id)}
                 title={hint}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
-                  active ? "bg-surface-3 text-fg ring-1 ring-line" : "text-fg-muted hover:bg-surface-3/60 hover:text-fg"
+                className={`inline-flex h-8 items-center gap-2 rounded-md px-3.5 text-sm font-medium transition-colors ${
+                  active ? "bg-fg text-canvas shadow-sm" : "text-fg-muted hover:bg-surface-3 hover:text-fg"
                 }`}
               >
-                <Icon className={`h-4 w-4 ${active ? "text-accent" : ""}`} />
+                <Icon className="h-4 w-4" />
                 {label}
               </button>
             );
@@ -101,10 +119,25 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
 
         {/* Right controls */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          {status && (
+            <div className="hidden items-center gap-2 lg:flex" title="Simulated outputs (hindi totoong koneksyon)">
+              <span className={chipCls}>
+                <span className={`h-2 w-2 rounded-full ${status.onAir ? "bg-live shadow-[0_0_0_3px_color-mix(in_srgb,var(--c-live)_25%,transparent)]" : "bg-fg-subtle"}`} />
+                Main
+              </span>
+              <span className={chipCls}>
+                <span className={`h-2 w-2 rounded-full ${status.foldback || status.ndi ? "bg-ok" : "bg-fg-subtle"}`} />
+                Foldback · NDI
+              </span>
+              <StatusClock />
+            </div>
+          )}
+          {/* EW version + language in one box (two real dropdowns) */}
+          <div className="flex items-center rounded-md border border-line bg-surface-2">
           <label className="sr-only" htmlFor="ew-version">
             EasyWorship version
           </label>
-          <select id="ew-version" value={version} onChange={(e) => setVersion(e.target.value as EasyWorshipVersion)} className={selectCls} style={chevron} title="EasyWorship version">
+          <select id="ew-version" value={version} onChange={(e) => setVersion(e.target.value as EasyWorshipVersion)} className={groupSelectCls} style={chevron} title="EasyWorship version">
             {VERSIONS.map((v) => (
               <option key={v} value={v}>
                 {v.replace("EasyWorship ", "EW ")}
@@ -114,18 +147,20 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
           <label className="sr-only" htmlFor="ui-language">
             Language
           </label>
-          <select id="ui-language" value={language} onChange={(e) => setLanguage(e.target.value as SupportedLanguage)} className={selectCls} style={chevron} title="Wika ng sagot / Language">
+          <span className="h-4 w-px bg-line" aria-hidden />
+          <select id="ui-language" value={language} onChange={(e) => setLanguage(e.target.value as SupportedLanguage)} className={groupSelectCls} style={chevron} title="Wika ng sagot / Language">
             {LANGUAGES.map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>
             ))}
           </select>
+          </div>
           {fs.supported && (
             <button
               type="button"
               onClick={fs.toggle}
-              className="btn btn-ghost btn-icon tap-target"
+              className="btn btn-ghost btn-icon tap-target lg:border-line"
               title={fs.on ? "Lumabas sa full screen (Esc)" : "Full screen (parang F11)"}
               aria-label={fs.on ? "Exit full screen" : "Full screen"}
               aria-pressed={fs.on}
@@ -137,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
             type="button"
             onClick={() => setShowAppearance((v) => !v)}
             data-appearance-toggle
-            className="btn btn-ghost btn-icon tap-target"
+            className="btn btn-ghost btn-icon tap-target lg:border-line"
             title="Appearance: mode, kulay, background"
             aria-label="Appearance"
             aria-expanded={showAppearance}

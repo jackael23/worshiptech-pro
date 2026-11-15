@@ -454,7 +454,16 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
             title={isRef ? undefined : "Double-click = Add + LIVE"}
             className={`bg-surface-2 hover:bg-surface-3 border border-line rounded-lg p-2.5 lg:py-1.5 transition-all text-xs group shadow-xs ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center justify-between gap-2.5">
+              {/* 2026-11-15 (Sanctuary): key tile, like the mockup (— = no key / reference) */}
+              <span
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border font-display text-sm font-medium ${
+                  isRef ? "border-line bg-surface-3 text-fg-subtle" : "border-accent/25 bg-accent-soft text-accent-text"
+                }`}
+                aria-hidden
+              >
+                {isRef ? "—" : song.key || "♪"}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-fg truncate flex items-center gap-1.5">
                   <span className="truncate">{song.title}</span>

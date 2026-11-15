@@ -182,7 +182,7 @@
   /* ---- small things ---- */
   /* 2026-11-15: serif section titles (Library, Schedule, Slides, Output) */
   .section-title {
-    @apply text-base font-medium tracking-tight text-fg;
+    @apply text-lg font-medium tracking-tight text-fg lg:text-xl;
     font-family: var(--font-display);
   }
   .eyebrow {
@@ -459,4 +459,35 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .stage-msg-blink { animation: none; }
+}
+
+/* ============================================================================
+   2026-11-15 (Mira): Sanctuary layout (mockup) — desktop Simulator = 3 separate cards
+   - .sim-shell: the Simulator wrapper; a normal panel on phones, see-through on desktop
+   - .sim-card: Library / Schedule / Output; plain inside the shell on phones, own card on desktop
+   - .live-frame: coral frame + soft glow around the Live screen while on air
+   ========================================================================== */
+@media (min-width: 1024px) {
+  .sim-shell {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .sim-card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: 10px;
+    box-shadow: var(--shadow-panel);
+  }
+  [data-appbg="on"] .sim-card {
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    backdrop-filter: blur(16px) saturate(1.15);
+  }
+}
+.live-frame {
+  box-shadow: 0 0 0 2px var(--c-live), 0 0 24px color-mix(in srgb, var(--c-live) 30%, transparent);
 }
