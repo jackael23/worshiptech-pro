@@ -14,7 +14,7 @@ AI assistant at practice simulator para sa mga church media volunteer na gumagam
 - **Phone remote** — kontrolin ang Live gamit ang phone sa parehong WiFi (tingnan sa ibaba).
 - **Guides** — step-by-step na mga gabay (kanta, scripture, NDI/OBS, foldback).
 - **Hotkeys** — official EW7 shortcut list (may babala para sa EW6/2009).
-- **Itsura ("Sanctuary")** — midnight blue + candle gold, ivory na text, serif na section titles, coral na GO LIVE / LIVE. May light mode (ivory). Sa **Appearance** (palette icon): **Candle** ang default na kulay; **Blue** = ang dating itsura.
+- **Itsura ("Sanctuary")** — midnight blue + candle gold, ivory na text, serif na section titles, coral na GO LIVE / LIVE (pati sa phone remote). May light mode (ivory). Sa **Appearance** (palette icon): **Candle** ang default na kulay; **Blue** = ang dating itsura.
 
 ## Patakbuhin sa sariling PC
 
