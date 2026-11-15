@@ -420,10 +420,11 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
         </button>
       </div>
 
-      <button disabled={disabled} onClick={() => cmd({ type: "golive" })} className="btn btn-secondary h-14 w-full rounded-xl text-sm" aria-label="Go live with the laptop preview">
+      <button disabled={disabled} onClick={() => cmd({ type: "golive" })} className="btn btn-live h-14 w-full rounded-xl text-sm" aria-label="Go live with the laptop preview">
+        {/* 2026-11-15: coral like the laptop's GO LIVE (Sanctuary look) */}
         <Play className="h-4 w-4 fill-current" />
         GO LIVE
-        <span className="min-w-0 truncate font-normal text-fg-muted">· {selSlide ? `${selItem?.title} — ${selSlide.label}` : "preview"}</span>
+        <span className="min-w-0 truncate font-normal text-white/85">· {selSlide ? `${selItem?.title} — ${selSlide.label}` : "preview"}</span>
       </button>
 
       <div className="grid grid-cols-3 gap-2">

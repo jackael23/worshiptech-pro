@@ -429,7 +429,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-fg border border-line hover:bg-surface-3">
             Cancel
           </button>
-          <button type="button" onClick={handleSave} disabled={selected.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-white disabled:opacity-50 flex items-center gap-1.5" data-testid="bulk-save">
+          <button type="button" onClick={handleSave} disabled={selected.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-50 flex items-center gap-1.5" data-testid="bulk-save">
             <Save className="w-4 h-4" />
             Save {selected.length} kanta
           </button>
@@ -457,7 +457,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
               <button type="button" onClick={() => setBgAllOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-fg border border-line hover:bg-surface-3">
                 Cancel
               </button>
-              <button type="button" onClick={applyBgToChecked} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-white flex items-center gap-1.5" data-testid="bulk-bg-apply">
+              <button type="button" onClick={applyBgToChecked} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-on-accent flex items-center gap-1.5" data-testid="bulk-bg-apply">
                 <Check className="w-4 h-4" /> Ilapat sa {selected.length} kanta
               </button>
             </div>

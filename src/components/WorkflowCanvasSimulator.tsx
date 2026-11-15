@@ -964,7 +964,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-line px-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <Layers className="h-4 w-4 shrink-0 text-accent" />
-          <h2 className="text-sm font-semibold text-fg">Simulator</h2>
+          <h2 className="section-title">Simulator</h2>
           {outputCount > 0 && (
             <span
               className="badge border-transparent bg-ok-soft text-fg"
@@ -1077,7 +1077,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         <section ref={libRef} className={`${panelVis("library")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Library">
           <div className="space-y-2.5 border-b border-line p-3">
             <div className="hidden items-center justify-between lg:flex">
-              <span className="eyebrow">Library</span>
+              <span className="section-title">Library</span>
             </div>
             <div className="seg grid w-full grid-cols-4" role="tablist" aria-label="Library">
               {libraryTabs.map(({ id, label, icon: Icon, title }) => (
@@ -1135,8 +1135,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         {/* ---------- PANEL 2: SCHEDULE + SLIDES ---------- */}
         <section ref={schedRef} className={`${panelVis("schedule")} min-h-0 flex-col overflow-hidden lg:border-r lg:border-line`} aria-label="Schedule">
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
-            <span className="eyebrow">
-              Schedule <span className="ml-1 font-mono font-normal normal-case tracking-normal">{scheduleItems.length}</span>
+            <span className="section-title">
+              Schedule <span className="ml-1 font-mono text-xs font-normal text-fg-subtle">{scheduleItems.length}</span>
             </span>
             <button
               onClick={() => {
@@ -1282,8 +1282,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
           {/* slides of the selected item */}
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 pt-2.5">
-              <span className="eyebrow truncate">
-                Slides <span className="ml-1 font-mono font-normal normal-case tracking-normal">{currentScheduleItem?.slides?.length || 0}</span>
+              <span className="section-title truncate">
+                Slides <span className="ml-1 font-mono text-xs font-normal text-fg-subtle">{currentScheduleItem?.slides?.length || 0}</span>
               </span>
               <span className="hidden items-center gap-1 text-xs text-fg-subtle sm:flex" title="Click = preview • Double-click = LIVE • ↑/↓ slides • Page Down = Go Live">
                 <span className="kbd">↑</span>
@@ -1334,7 +1334,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         <section ref={outRef} className={`${panelVis("live")} @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
           <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
             {/* 2026-11-07: label hidden on narrow columns so the 4th tool (Theme) + Main/Foldback/NDI still fit */}
-            <span className="eyebrow mr-1 hidden @[26rem]/out:inline">Output</span>
+            <span className="section-title mr-1 hidden @[26rem]/out:inline">Output</span>
             {([
               ["projector", "Projector output", "Projector", MonitorUp, outputCount > 0 || stageCount > 0],
               ["phone", "Phone remote", "Phone", Smartphone, remote.phones > 0],
@@ -1437,7 +1437,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
 
             {/* GO LIVE + Black / Clear / Logo in one row */}
             <div className="grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto] gap-1.5">
-              <button onClick={handleGoLive} className="btn btn-primary btn-lg h-12 w-full">
+              <button onClick={handleGoLive} className="btn btn-live btn-lg h-12 w-full">
                 <Play className="h-4 w-4 fill-current" />
                 GO LIVE
                 <span className="ml-1 hidden h-5 items-center rounded border border-white/25 bg-white/15 px-1 font-mono text-xs font-normal leading-none @[26rem]/out:inline-flex">PgDn</span>

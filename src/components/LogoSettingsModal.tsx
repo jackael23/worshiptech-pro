@@ -120,7 +120,7 @@ export const LogoSettingsModal: React.FC<Props> = ({ liveState, onClose, onSaved
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-fg border border-line hover:bg-surface-3">
             Cancel
           </button>
-          <button type="button" onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-white flex items-center gap-1.5" data-testid="logo-save">
+          <button type="button" onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-on-accent flex items-center gap-1.5" data-testid="logo-save">
             <Save className="w-4 h-4" /> Save
           </button>
         </div>

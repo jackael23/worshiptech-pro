@@ -152,7 +152,7 @@ export default function App() {
     // 2026-10-20 (Jarvis): app fills the screen (100dvh); only <main> scrolls.
     // 2026-10-28: design-system shell — app bar on top, bottom nav on phones.
     // 2026-11-07: "isolate" = own stacking layer, so the -z-10 backdrop sits above <body>'s color but under the panels
-    <div className={`isolate h-dvh overflow-hidden text-fg flex flex-col font-sans ${appearance.bg.id ? "" : "bg-canvas"}`}>
+    <div className={`isolate h-dvh overflow-hidden text-fg flex flex-col font-sans ${appearance.bg.id ? "" : "bg-canvas app-glow"}`}>
       <AppBackdrop bg={appearance.bg} motion={appearance.motion} />
       <Header
         version={version}

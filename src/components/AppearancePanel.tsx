@@ -19,7 +19,7 @@ const tileCls = (selected: boolean) =>
   `group relative block w-full overflow-hidden rounded-md border text-left ${selected ? "border-accent ring-2 ring-accent/40" : "border-line hover:border-line-strong"}`;
 
 const Tick = () => (
-  <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white">
+  <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-on-accent">
     <Check className="h-3 w-3" />
   </span>
 );
@@ -160,7 +160,7 @@ export const AppearancePanel: React.FC<Props> = ({ value, onChange, onClose }) =
                   className={`grid h-9 w-9 place-items-center rounded-full ring-offset-2 ring-offset-[var(--c-surface-solid)] transition-shadow max-lg:h-11 max-lg:w-11 ${on ? "ring-2 ring-fg" : "hover:ring-2 hover:ring-line-strong"}`}
                   style={{ background: a.swatch }}
                 >
-                  {on && <Check className="h-4 w-4 text-white" strokeWidth={3} />}
+                  {on && <Check className={`h-4 w-4 ${a.id === "candle" ? "text-[#1a1408]" : "text-white"}`} strokeWidth={3} />}
                 </button>
               );
             })}

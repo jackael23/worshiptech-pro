@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WorshipTech-Pro — EasyWorship Assistant</title>
     <meta name="description" content="AI assistant at practice simulator para sa EasyWorship 7/6/2009: hotkeys, step-by-step guides, songs at buong Bible (Ang Biblia 1905, KJV)." />
-    <meta name="theme-color" content="#111113" />
+    <meta name="theme-color" content="#12141f" />
     <!-- 2026-11-14: app icon for the browser tab and for desktop / phone home-screen shortcuts (files in public/).
          The manifest has no start_url on purpose: a shortcut opens the page it was made from (main app or ?remote). -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -25,7 +25,8 @@
           if (a && typeof a === "object") {
             if (a.mode === "light" || a.mode === "dark") t = a.mode;
             else if (a.mode === "auto") t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-            if (typeof a.accent === "string" && /^[a-z]{1,12}$/.test(a.accent)) el.setAttribute("data-accent", a.accent);
+            // 2026-11-15: an old (pre-Sanctuary) "blue" was only the old default → new default (same rule as loadAppearance)
+            if (typeof a.accent === "string" && /^[a-z]{1,12}$/.test(a.accent) && !(a.accent === "blue" && !(a.v >= 2))) el.setAttribute("data-accent", a.accent);
             if (a.bg && typeof a.bg.id === "string" && a.bg.id) el.setAttribute("data-appbg", "on");
           } else {
             var s = localStorage.getItem("wtp-theme");

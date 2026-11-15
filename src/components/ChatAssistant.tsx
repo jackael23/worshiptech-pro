@@ -302,16 +302,16 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[26rem] max-w-5xl mx-auto w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="flex flex-col h-full min-h-[26rem] max-w-5xl mx-auto w-full bg-surface rounded-xl border border-line shadow-sm overflow-hidden">
       {/* Chat Subheader */}
-      <div className="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between">
+      <div className="px-6 py-3 bg-surface border-b border-line flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className={`w-2.5 h-2.5 rounded-full ${aiStatus === "online" ? "bg-emerald-500 animate-pulse" : aiStatus === "offline" ? "bg-slate-400" : "bg-amber-400"}`} />
-          <span className="text-xs font-semibold text-slate-800">
+          <div className={`w-2.5 h-2.5 rounded-full ${aiStatus === "online" ? "bg-ok animate-pulse" : aiStatus === "offline" ? "bg-fg-subtle" : "bg-warn"}`} />
+          <span className="text-xs font-semibold text-fg">
             {aiStatus === "offline" ? "AI chat offline" : "WorshipTech-Pro Agent Active"} ({version})
           </span>
-          <span className="text-slate-300 hidden sm:inline">•</span>
-          <span className="text-xs text-slate-500 hidden sm:inline">
+          <span className="text-fg-subtle hidden sm:inline">•</span>
+          <span className="text-xs text-fg-muted hidden sm:inline">
             Trained on EasyWorship Workflows & Hotkeys
           </span>
         </div>
@@ -319,7 +319,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenSimulator}
-            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
+            className="text-xs bg-accent-soft hover:bg-accent-soft text-accent-text border border-accent/30 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
           >
             <PlayCircle className="w-3.5 h-3.5" />
             <span>Open Simulator</span>
@@ -327,7 +327,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           <button
             onClick={handleResetChat}
             title="Clear Chat History (naka-save ang chat sa browser na ito)"
-            className="tap-target text-slate-500 hover:text-slate-800 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-medium"
+            className="tap-target text-fg-muted hover:text-fg px-2 py-1.5 rounded-lg hover:bg-surface-3 transition-colors flex items-center gap-1 text-xs font-medium"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Clear chat</span>
@@ -336,7 +336,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       </div>
 
       {aiStatus === "offline" && (
-        <div role="status" className="px-6 py-3 bg-amber-50 border-b border-amber-200 text-xs text-amber-900 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div role="status" className="px-6 py-3 bg-warn-soft border-b border-warn/40 text-xs text-warn-text flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="flex-1 min-w-[16rem]">
             {language === "English" ? (
               <>
@@ -349,10 +349,10 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
             )}
           </span>
           <span className="flex gap-1.5 shrink-0">
-            <button onClick={() => onOpenGuides()} className="tap-target px-3 py-1.5 rounded-md bg-white border border-amber-300 font-semibold hover:bg-amber-100">
+            <button onClick={() => onOpenGuides()} className="tap-target px-3 py-1.5 rounded-md bg-surface border border-warn/40 font-semibold hover:bg-warn-soft">
               Guides
             </button>
-            <button onClick={onOpenSimulator} className="tap-target px-3 py-1.5 rounded-md bg-white border border-amber-300 font-semibold hover:bg-amber-100">
+            <button onClick={onOpenSimulator} className="tap-target px-3 py-1.5 rounded-md bg-surface border border-warn/40 font-semibold hover:bg-warn-soft">
               Simulator
             </button>
           </span>
@@ -360,9 +360,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       )}
 
       {/* Preset Topics Quick Bar */}
-      <div className="px-6 py-2.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-2 overflow-x-auto scrollbar-none">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 shrink-0">
-          <Sparkles className="w-3 h-3 text-blue-600" />
+      <div className="px-6 py-2.5 bg-surface-2 border-b border-line flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <span className="text-xs font-semibold text-fg-muted uppercase tracking-wider flex items-center gap-1 shrink-0">
+          <Sparkles className="w-3 h-3 text-accent-text" />
           Quick Topics:
         </span>
         {PRESET_QUERIES.map((preset, idx) => {
@@ -372,9 +372,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               key={idx}
               onClick={() => handleSendMessage(language === "English" ? preset.enText : preset.text)}
               disabled={chatOff}
-              className="tap-target disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-xs"
+              className="tap-target disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface text-fg border border-line hover:border-line-strong hover:bg-surface-2 transition-all shadow-xs"
             >
-              <Icon className="w-3.5 h-3.5 text-blue-600" />
+              <Icon className="w-3.5 h-3.5 text-accent-text" />
               <span>{preset.tag}</span>
             </button>
           );
@@ -382,7 +382,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/40">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-surface-2">
         {messages.map((msg) => {
           const isUser = msg.role === "user";
           return (
@@ -394,8 +394,8 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               <div
                 className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-xs text-xs font-bold ${
                   isUser
-                    ? "bg-slate-200 text-slate-700 rounded-full"
-                    : "bg-blue-600 text-white"
+                    ? "bg-surface-3 text-fg rounded-full"
+                    : "bg-accent text-on-accent"
                 }`}
               >
                 {isUser ? <User className="w-4 h-4" /> : <span>PRO</span>}
@@ -405,36 +405,36 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               <div
                 className={`group relative px-5 py-4 text-sm leading-relaxed shadow-xs ${
                   isUser
-                    ? "bg-slate-100 text-slate-800 rounded-2xl rounded-tr-none border border-slate-200/60 max-w-lg"
-                    : "bg-blue-50/70 text-slate-800 border border-blue-100 rounded-2xl rounded-tl-none max-w-2xl"
+                    ? "bg-surface-3 text-fg rounded-2xl rounded-tr-none border border-line max-w-lg"
+                    : "bg-accent-soft text-fg border border-accent/30 rounded-2xl rounded-tl-none max-w-2xl"
                 }`}
               >
                 {/* Header tag */}
-                <div className="flex items-center justify-between gap-4 mb-2 text-xs text-slate-500 font-medium">
-                  <span className="font-semibold text-slate-700">
+                <div className="flex items-center justify-between gap-4 mb-2 text-xs text-fg-muted font-medium">
+                  <span className="font-semibold text-fg">
                     {isUser ? "You (Media Volunteer)" : "WorshipTech-Pro Assistant"}
                   </span>
                   <span>{msg.timestamp}</span>
                 </div>
 
                 {/* Content */}
-                <div className="prose prose-sm max-w-none text-slate-700 prose-p:my-1.5 prose-headings:text-slate-900 prose-headings:font-bold prose-headings:my-2 prose-strong:text-slate-900 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
+                <div className="prose prose-sm max-w-none text-fg prose-p:my-1.5 prose-headings:text-fg prose-headings:font-bold prose-headings:my-2 prose-strong:text-fg prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                 </div>
 
                 {/* Assistant message action toolbar */}
                 {!isUser && (
-                  <div className="mt-4 pt-3 border-t border-blue-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="mt-4 pt-3 border-t border-accent/30 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleCopy(msg.id, msg.content)}
-                        className="tap-target text-slate-500 hover:text-slate-800 px-2 py-2 lg:p-1 rounded-md hover:bg-blue-100/60 transition-colors flex items-center gap-1 text-xs"
+                        className="tap-target text-fg-muted hover:text-fg px-2 py-2 lg:p-1 rounded-md hover:bg-accent-soft transition-colors flex items-center gap-1 text-xs"
                         title="Copy guide to clipboard"
                       >
                         {copiedId === msg.id ? (
                           <>
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span className="text-emerald-600 font-medium">Copied!</span>
+                            <Check className="w-3 h-3 text-ok" />
+                            <span className="text-ok font-medium">Copied!</span>
                           </>
                         ) : (
                           <>
@@ -446,8 +446,8 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
                       <button
                         onClick={() => handleSpeak(msg.id, msg.content)}
-                        className={`tap-target px-2 py-2 lg:p-1 rounded-md hover:bg-blue-100/60 transition-colors flex items-center gap-1 text-xs ${
-                          speakingId === msg.id ? "text-red-600 hover:text-red-700 font-semibold" : "text-slate-500 hover:text-slate-800"
+                        className={`tap-target px-2 py-2 lg:p-1 rounded-md hover:bg-accent-soft transition-colors flex items-center gap-1 text-xs ${
+                          speakingId === msg.id ? "text-live-text hover:text-live-text font-semibold" : "text-fg-muted hover:text-fg"
                         }`}
                         title={speakingId === msg.id ? "Stop reading" : "Read instructions aloud"}
                       >
@@ -467,9 +467,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
                     <button
                       onClick={onOpenSimulator}
-                      className="tap-target inline-flex items-center gap-1.5 text-xs text-blue-700 hover:text-blue-800 font-semibold bg-white hover:bg-blue-50 px-3 py-1 rounded-md border border-blue-200 shadow-xs transition-all"
+                      className="tap-target inline-flex items-center gap-1.5 text-xs text-accent-text hover:text-accent-text font-semibold bg-surface hover:bg-accent-soft px-3 py-1 rounded-md border border-accent/30 shadow-xs transition-all"
                     >
-                      <Tv className="w-3 h-3 text-blue-600" />
+                      <Tv className="w-3 h-3 text-accent-text" />
                       <span>Test on Live Simulator &rarr;</span>
                     </button>
                   </div>
@@ -482,16 +482,16 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         {/* Loading Indicator */}
         {isLoading && (
           <div className="flex gap-3 max-w-md mr-auto">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs text-xs">
+            <div className="w-8 h-8 rounded-lg bg-accent text-on-accent font-bold flex items-center justify-center shrink-0 shadow-xs text-xs">
               PRO
             </div>
-            <div className="bg-blue-50/70 border border-blue-100 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-slate-700 flex items-center gap-2 shadow-xs">
+            <div className="bg-accent-soft border border-accent/30 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-fg flex items-center gap-2 shadow-xs">
               <div className="flex space-x-1.5">
-                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
-              <span className="text-xs text-slate-500 ml-1">WorshipTech-Pro is crafting steps...</span>
+              <span className="text-xs text-fg-muted ml-1">WorshipTech-Pro is crafting steps...</span>
             </div>
           </div>
         )}
@@ -500,7 +500,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white border-t border-slate-100">
+      <div className="p-4 bg-surface border-t border-line">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -526,21 +526,21 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 ? "Ask anything about EasyWorship (e.g. How to project John 3:16 instantly?)"
                 : "Magtanong sa Taglish (hal. Paano mag-add ng song sa service schedule?)"
             }
-            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm text-slate-800 placeholder-slate-400 transition-all pr-12"
+            className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-accent/25 text-sm text-fg placeholder-fg-subtle transition-all pr-12"
           />
 
           <button
             type="submit"
             disabled={!inputQuery.trim() || isLoading || chatOff}
-            className="tap-target absolute right-2 p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg flex items-center justify-center transition-all shadow-xs active:scale-95 disabled:cursor-not-allowed"
+            className="tap-target absolute right-2 p-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg flex items-center justify-center transition-all shadow-xs active:scale-95 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>
         </form>
 
-        <div className="mt-2.5 flex items-center justify-between text-xs text-slate-400 px-1">
+        <div className="mt-2.5 flex items-center justify-between text-xs text-fg-subtle px-1">
           <span>
-            💡 Pro-Tip: EasyWorship 7: black screen <strong className="text-slate-600 font-semibold">[Ctrl+B]</strong>, text on/off <strong className="text-slate-600 font-semibold">[Ctrl+C]</strong>.
+            💡 Pro-Tip: EasyWorship 7: black screen <strong className="text-fg-muted font-semibold">[Ctrl+B]</strong>, text on/off <strong className="text-fg-muted font-semibold">[Ctrl+C]</strong>.
           </span>
           <span className="hidden sm:inline">Powered by Gemini 3.7 Flash</span>
         </div>

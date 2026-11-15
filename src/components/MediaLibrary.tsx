@@ -207,7 +207,7 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
                         </span>
                       )}
                       {selected && (
-                        <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white">
+                        <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-on-accent">
                           <Check className="h-3 w-3" />
                         </span>
                       )}

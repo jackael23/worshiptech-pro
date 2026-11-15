@@ -367,7 +367,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
             key={f.id}
             onClick={() => setFilter(f.id)}
             className={`tap-target px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-              filter === f.id ? "bg-accent text-white border-accent" : "bg-surface-2 text-fg-muted border-line hover:bg-surface-3"
+              filter === f.id ? "bg-accent text-on-accent border-accent" : "bg-surface-2 text-fg-muted border-line hover:bg-surface-3"
             }`}
           >
             {f.label}
@@ -378,7 +378,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
 
       {/* My Songs toolbar */}
       <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} bg-accent hover:bg-accent-hover text-white border-accent`}>
+        <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} bg-accent hover:bg-accent-hover text-on-accent border-accent`}>
           <FilePlus2 className="w-3.5 h-3.5" />
           New Song
         </button>
