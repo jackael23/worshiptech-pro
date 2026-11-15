@@ -1,7 +1,7 @@
 /**
  * 2026-11-07 (Mira): Appearance settings for the app itself (not the projector).
  *  - mode: dark / light / auto (follows Windows)
- *  - accent: one of ACCENTS (blue = the old look)
+ *  - accent: one of ACCENTS (2026-11-15: "candle" gold = the Sanctuary default; blue = the old look)
  *  - background: none, a built-in scene (animated / nature, drawn in code — no downloads, works offline),
  *    or a picture / video from the Media tab (the file stays in the media database + its CouchDB sync)
  *  - motion: animated scenes can be paused (also paused automatically for "reduce motion")
@@ -31,10 +31,14 @@ export const APPEARANCE_KEY = "wtp-appearance-v1";
 const OLD_THEME_KEY = "wtp-theme"; // 2026-10-28 dark/light toggle — still written so older code paths agree
 
 export const DEFAULT_BG: AppBackground = { id: "", dim: 0.3, blur: 0 };
-export const DEFAULT_APPEARANCE: Appearance = { mode: "dark", accent: "blue", bg: DEFAULT_BG, motion: true };
+export const DEFAULT_APPEARANCE: Appearance = { mode: "dark", accent: "candle", bg: DEFAULT_BG, motion: true };
 
-/** Accent colors. Each keeps white text on buttons readable (≈4.5:1 or better, blue = unchanged). */
+/** Saves made before the Sanctuary redesign have no version; their "blue" was just the old default. */
+const APPEARANCE_VERSION = 2;
+
+/** Accent colors. Text on accent buttons stays readable (≈4.5:1 or better): dark text on Candle, white on the rest. */
 export const ACCENTS: { id: string; name: string; swatch: string }[] = [
+  { id: "candle", name: "Candle", swatch: "#e8b86a" },
   { id: "blue", name: "Blue", swatch: "#3b82f6" },
   { id: "purple", name: "Purple", swatch: "#7c3aed" },
   { id: "green", name: "Green", swatch: "#15803d" },
@@ -80,7 +84,13 @@ export function sanitizeAppearance(raw: unknown): Appearance {
 export function loadAppearance(): Appearance {
   try {
     const s = localStorage.getItem(APPEARANCE_KEY);
-    if (s) return sanitizeAppearance(JSON.parse(s));
+    if (s) {
+      const raw = JSON.parse(s);
+      const a = sanitizeAppearance(raw);
+      // 2026-11-15: one-time move to the new default — "blue" saved before the redesign was never a real choice
+      if (a.accent === "blue" && !(raw && raw.v >= APPEARANCE_VERSION)) a.accent = "candle";
+      return a;
+    }
     // first run after this update: keep the old dark/light choice
     const old = localStorage.getItem(OLD_THEME_KEY);
     if (old === "light" || old === "dark") return { ...DEFAULT_APPEARANCE, mode: old };
@@ -92,7 +102,7 @@ export function loadAppearance(): Appearance {
 
 export function saveAppearance(a: Appearance, resolved: ResolvedMode) {
   try {
-    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(a));
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify({ ...a, v: APPEARANCE_VERSION }));
     localStorage.setItem(OLD_THEME_KEY, resolved);
   } catch {
     /* storage blocked */
@@ -117,5 +127,5 @@ export function applyAppearance(a: Appearance, resolved: ResolvedMode) {
   if (a.bg.id) el.dataset.appbg = "on";
   else delete el.dataset.appbg;
   el.dataset.motion = a.motion ? "on" : "off";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111113" : "#ffffff");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#12141f" : "#fffdf8");
 }

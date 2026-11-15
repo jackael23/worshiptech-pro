@@ -79,7 +79,7 @@ export const ThemePicker: React.FC<Props> = ({ store, currentItem, itemLabel, on
             </span>
           )}
           {isDefault && (
-            <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded bg-accent px-1 py-0.5 text-[11px] font-semibold text-white">
+            <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded bg-accent px-1 py-0.5 text-[11px] font-semibold text-on-accent">
               <Star className="h-2.5 w-2.5 fill-current" /> Default
             </span>
           )}

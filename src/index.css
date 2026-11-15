@@ -2,6 +2,8 @@
 /* 2026-10-28 (Jarvis): bundled fonts (work offline, same look on every PC) */
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
+/* 2026-11-15 (Mira): "Sanctuary" look — serif for section titles (bundled too, works offline) */
+@import "@fontsource-variable/fraunces";
 
 /* ============================================================================
    2026-10-28 (Jarvis) — WorshipTech-Pro design system ("Pro Dark" + light theme)
@@ -16,6 +18,8 @@
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --color-on-accent: var(--c-on-accent);
 
   --color-canvas: var(--c-canvas);
   --color-surface: var(--c-surface);
@@ -41,63 +45,65 @@
   --color-screen: var(--c-screen);
 }
 
+/* 2026-11-15 (Mira): "Sanctuary" palette — midnight blue + candle gold + ivory text, coral LIVE.
+   Light = warm ivory paper with a deeper gold. The old zinc + blue look is the "Blue" accent now. */
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --c-canvas: #f4f4f5;
-  --c-surface: #ffffff;
-  --c-surface-2: #fafafa;
-  --c-surface-3: #f4f4f5;
-  /* 2026-11-06: borders a step stronger (were #e4e4e7 / #d4d4d8 ≈ 1.27:1) — cards stay apart on dim / cheap screens */
-  --c-line: #d4d4d8;
-  --c-line-strong: #c2c2c9;
-  --c-fg: #09090b;
-  --c-fg-muted: #52525b;
-  /* 2026-10-29: was #71717a (4.4:1 on canvas, below WCAG AA) → ~5.5:1 */
-  --c-fg-subtle: #62626a;
-  --c-accent: #2563eb;
-  --c-accent-hover: #1d4ed8;
-  --c-accent-soft: #eff6ff;
-  --c-accent-text: #1d4ed8;
-  --c-live: #dc2626;
-  --c-live-soft: #fef2f2;
-  --c-live-text: #b91c1c;
-  --c-ok: #16a34a;
-  --c-ok-soft: #f0fdf4;
+  --c-canvas: #f4f1ea;
+  --c-surface: #fffdf8;
+  --c-surface-2: #faf7f0;
+  --c-surface-3: #f1ede4;
+  --c-line: #d6d0c4;
+  --c-line-strong: #bfb8a9;
+  --c-fg: #1a1712;
+  --c-fg-muted: #4f4941;
+  /* ≈5.6:1 on canvas (WCAG AA) */
+  --c-fg-subtle: #625a50;
+  --c-accent: #9a6514; /* white text ≈5:1 */
+  --c-accent-hover: #7f5210;
+  --c-accent-soft: #f8edd8;
+  --c-accent-text: #7f5210;
+  --c-on-accent: #ffffff;
+  --c-live: #d9363b; /* white text ≈4.6:1 */
+  --c-live-soft: #fdeeee;
+  --c-live-text: #b4232a;
+  --c-ok: #2f8f5b;
+  --c-ok-soft: #eaf6ef;
   --c-warn: #d97706;
   --c-warn-soft: #fffbeb;
   --c-warn-text: #92400e;
   --c-screen: #0a0a0c; /* projector screens stay dark in both themes */
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.04);
+  --shadow-panel: 0 1px 2px rgb(60 40 10 / 0.05), 0 2px 8px rgb(60 40 10 / 0.05);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --c-canvas: #09090b;
-  --c-surface: #111113;
-  --c-surface-2: #17171a;
-  --c-surface-3: #1f1f23;
-  /* 2026-11-06: borders a step stronger (were #26262b / #3a3a41 ≈ 1.25:1) — cards stay apart in a dark booth */
-  --c-line: #34343b;
-  --c-line-strong: #4a4a53;
-  --c-fg: #fafafa;
-  /* 2026-10-29: hint text was hard to read on the projector-room screen — subtle 5.6:1 → 7:1, muted raised too to keep the hierarchy */
-  --c-fg-muted: #b4b4bd;
-  --c-fg-subtle: #9d9da6;
-  --c-accent: #3b82f6;
-  --c-accent-hover: #2563eb;
-  --c-accent-soft: rgb(59 130 246 / 0.14);
-  --c-accent-text: #93c5fd;
-  --c-live: #ef4444;
-  --c-live-soft: rgb(239 68 68 / 0.14);
-  --c-live-text: #fca5a5;
-  --c-ok: #22c55e;
-  --c-ok-soft: rgb(34 197 94 / 0.14);
+  --c-canvas: #0b0d17;
+  --c-surface: #12141f;
+  --c-surface-2: #171a27;
+  --c-surface-3: #1f2232;
+  --c-line: #2f3346;
+  --c-line-strong: #454a63;
+  --c-fg: #f3efe6;
+  /* readable in a dark booth: muted ≈11:1, subtle ≈7.5:1 on canvas */
+  --c-fg-muted: #c9c4b8;
+  --c-fg-subtle: #a9a49a;
+  --c-accent: #e8b86a; /* candle gold — dark text on it */
+  --c-accent-hover: #f3d29a;
+  --c-accent-soft: rgb(232 184 106 / 0.14);
+  --c-accent-text: #f3d29a;
+  --c-on-accent: #1a1408;
+  --c-live: #ff5a5f;
+  --c-live-soft: rgb(255 90 95 / 0.16);
+  --c-live-text: #ff9a9d;
+  --c-ok: #7fd1a8;
+  --c-ok-soft: rgb(127 209 168 / 0.14);
   --c-warn: #f59e0b;
   --c-warn-soft: rgb(245 158 11 / 0.12);
   --c-warn-text: #fcd34d;
   --c-screen: #000000;
-  --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.02);
+  --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.02), 0 8px 24px rgb(0 0 0 / 0.25);
 }
 
 @layer base {
@@ -112,7 +118,7 @@
   }
   ::selection {
     background: var(--c-accent);
-    color: #fff;
+    color: var(--c-on-accent);
   }
   :focus-visible {
     outline: 2px solid var(--c-accent);
@@ -141,7 +147,12 @@
     @apply w-8 px-0;
   }
   .btn-primary {
-    @apply bg-accent text-white hover:bg-accent-hover;
+    @apply bg-accent text-on-accent hover:bg-accent-hover;
+  }
+  /* 2026-11-15: GO LIVE — coral, so it never looks like an ordinary gold button */
+  .btn-live {
+    @apply bg-live text-white font-semibold tracking-wide hover:brightness-110;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--c-live) 28%, transparent);
   }
   .btn-secondary {
     @apply bg-surface-3 text-fg border-line hover:border-line-strong;
@@ -169,6 +180,11 @@
   }
 
   /* ---- small things ---- */
+  /* 2026-11-15: serif section titles (Library, Schedule, Slides, Output) */
+  .section-title {
+    @apply text-base font-medium tracking-tight text-fg;
+    font-family: var(--font-display);
+  }
   .eyebrow {
     @apply text-xs font-semibold uppercase tracking-[0.08em] text-fg-subtle;
   }
@@ -191,7 +207,7 @@
     @apply w-full h-9 rounded-md border border-line bg-surface-2 px-3 text-sm text-fg placeholder:text-fg-subtle transition-colors focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25;
   }
   .panel {
-    @apply bg-surface border border-line rounded-xl;
+    @apply bg-surface border border-line rounded-[10px];
     box-shadow: var(--shadow-panel);
   }
   .row {
@@ -271,6 +287,10 @@
    - <html data-appbg="on">: panels become slightly see-through so the background shows in the gaps
      and softly behind cards. Frosted glass (backdrop-filter) only on panels, header and phone nav.
    ========================================================================== */
+/* 2026-11-15: base tokens are now "Candle" (gold). Blue = the old look; every other accent keeps white text. */
+[data-accent="blue"]   { --c-accent: #2563eb; --c-accent-hover: #1d4ed8; --c-accent-soft: #eff6ff; --c-accent-text: #1d4ed8; }
+[data-theme="dark"][data-accent="blue"] { --c-accent: #3b82f6; --c-accent-hover: #2563eb; --c-accent-soft: rgb(59 130 246 / 0.14); --c-accent-text: #93c5fd; }
+[data-accent]:not([data-accent="candle"]) { --c-on-accent: #ffffff; }
 [data-accent="purple"] { --c-accent: #7c3aed; --c-accent-hover: #6d28d9; --c-accent-soft: #f5f3ff; --c-accent-text: #6d28d9; }
 [data-accent="green"]  { --c-accent: #15803d; --c-accent-hover: #166534; --c-accent-soft: #f0fdf4; --c-accent-text: #166534; }
 [data-accent="teal"]   { --c-accent: #0f766e; --c-accent-hover: #115e59; --c-accent-soft: #f0fdfa; --c-accent-text: #115e59; }
@@ -285,32 +305,32 @@
 
 :root,
 [data-theme="light"] {
-  --c-surface-solid: #ffffff; /* popovers stay solid even when panels are see-through */
+  --c-surface-solid: #fffdf8; /* popovers stay solid even when panels are see-through */
 }
 [data-theme="dark"] {
-  --c-surface-solid: #111113;
+  --c-surface-solid: #12141f;
 }
 
 [data-theme="light"][data-appbg="on"] {
-  --c-surface: rgb(255 255 255 / 0.66);
-  --c-surface-2: rgb(250 250 250 / 0.6);
-  --c-surface-3: rgb(244 244 245 / 0.8);
+  --c-surface: rgb(255 253 248 / 0.66);
+  --c-surface-2: rgb(250 247 240 / 0.6);
+  --c-surface-3: rgb(241 237 228 / 0.8);
 }
 [data-theme="dark"][data-appbg="on"] {
-  --c-surface: rgb(17 17 19 / 0.6);
-  --c-surface-2: rgb(23 23 26 / 0.55);
-  --c-surface-3: rgb(31 31 35 / 0.78);
+  --c-surface: rgb(18 20 31 / 0.6);
+  --c-surface-2: rgb(23 26 39 / 0.55);
+  --c-surface-3: rgb(31 34 50 / 0.78);
 }
 /* 2026-11-07 (b): dialogs (Add / Edit song, Bulk Add, Logo …) stay solid — only the main screen is see-through */
 [data-theme="light"][data-appbg="on"] [role="dialog"] {
-  --c-surface: #ffffff;
-  --c-surface-2: #fafafa;
-  --c-surface-3: #f4f4f5;
+  --c-surface: #fffdf8;
+  --c-surface-2: #faf7f0;
+  --c-surface-3: #f1ede4;
 }
 [data-theme="dark"][data-appbg="on"] [role="dialog"] {
-  --c-surface: #111113;
-  --c-surface-2: #17171a;
-  --c-surface-3: #1f1f23;
+  --c-surface: #12141f;
+  --c-surface-2: #171a27;
+  --c-surface-3: #1f2232;
 }
 /* frosted glass on the big containers only (a few elements = light on the GPU); text stays crisp */
 [data-appbg="on"] .panel,
@@ -383,7 +403,7 @@
 .icon-btn:active { transform: translateY(0); }
 .icon-btn svg { width: 1rem; height: 1rem; stroke-width: 2.25; }
 .icon-btn-edit { background: var(--c-accent-soft); border-color: var(--c-accent); color: var(--c-accent-text); }
-.icon-btn-edit:hover { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.icon-btn-edit:hover { background: var(--c-accent); color: var(--c-on-accent); border-color: var(--c-accent); }
 .icon-btn-move:hover { background: var(--c-surface-solid); }
 .icon-btn-danger { background: var(--c-live-soft); border-color: var(--c-live); color: var(--c-live-text); }
 .icon-btn-danger:hover { background: var(--c-live); color: #fff; border-color: var(--c-live); }
@@ -397,27 +417,36 @@
 /* Borders: bumalik sa 1px na dati, bahagya lang pinaliwanag ang kulay (2026-11-08). */
 :root,
 [data-theme="light"] {
-  --c-line: #c4c4cb;
-  --c-line-strong: #adadb6;
+  --c-line: #cbc4b6;
+  --c-line-strong: #b0a898;
 }
 [data-theme="dark"] {
-  --c-line: #3d3d45;
-  --c-line-strong: #56565f;
+  --c-line: #363b52;
+  --c-line-strong: #4f5570;
 }
 /* may background: konting dagdag na linaw lang */
 [data-theme="dark"][data-appbg="on"] {
-  --c-line: #4a4a54;
-  --c-line-strong: #666672;
-  --c-surface: rgb(14 14 17 / 0.7);
-  --c-surface-2: rgb(21 21 25 / 0.66);
-  --c-surface-3: rgb(32 32 38 / 0.86);
+  --c-line: #444a63;
+  --c-line-strong: #60667f;
+  --c-surface: rgb(15 17 27 / 0.7);
+  --c-surface-2: rgb(21 24 36 / 0.66);
+  --c-surface-3: rgb(31 34 50 / 0.86);
 }
 [data-theme="light"][data-appbg="on"] {
-  --c-line: #b0b0ba;
-  --c-line-strong: #92929d;
-  --c-surface: rgb(255 255 255 / 0.74);
-  --c-surface-2: rgb(250 250 250 / 0.68);
-  --c-surface-3: rgb(244 244 245 / 0.88);
+  --c-line: #b3ab9b;
+  --c-line-strong: #968d7c;
+  --c-surface: rgb(255 253 248 / 0.74);
+  --c-surface-2: rgb(250 247 240 / 0.68);
+  --c-surface-3: rgb(241 237 228 / 0.88);
+}
+
+/* 2026-11-15 (Mira): soft candle-glow behind the panels when no Appearance background is chosen */
+[data-theme="dark"] .app-glow {
+  background-image: radial-gradient(1100px 600px at 85% -10%, rgb(232 184 106 / 0.07), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgb(110 120 220 / 0.08), transparent 60%);
+}
+[data-theme="light"] .app-glow {
+  background-image: radial-gradient(1100px 600px at 85% -10%, rgb(201 143 62 / 0.08), transparent 60%);
 }
 
 /* 2026-11-15 (Mira): Stage screen announcement — blinks 4× when a new message is sent */

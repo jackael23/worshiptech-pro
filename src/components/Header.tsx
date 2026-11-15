@@ -69,11 +69,11 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
       <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5">
         {/* Brand */}
         <div className="flex shrink-0 items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white shadow-sm">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-on-accent shadow-sm">
             <MonitorPlay className="h-4 w-4" strokeWidth={2.25} />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight text-fg max-[419px]:sr-only">WorshipTech-Pro</div>
+            <div className="font-display text-base font-medium tracking-tight text-fg max-[419px]:sr-only">WorshipTech-Pro</div>
             <div className="hidden text-xs text-fg-subtle sm:block">EasyWorship companion</div>
           </div>
         </div>

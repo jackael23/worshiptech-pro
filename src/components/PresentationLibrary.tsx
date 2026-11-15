@@ -157,7 +157,7 @@ export const PresentationLibrary: React.FC<PresentationLibraryProps> = ({ search
         <button
           onClick={() => pptxRef.current?.click()}
           disabled={!!busy}
-          className={`${smallBtn} bg-accent hover:bg-accent-hover text-white border-accent`}
+          className={`${smallBtn} bg-accent hover:bg-accent-hover text-on-accent border-accent`}
           title="PowerPoint (.pptx): kukunin ang text, notes, background at malalaking larawan ng bawat slide"
         >
           <Upload className="w-3.5 h-3.5" />
