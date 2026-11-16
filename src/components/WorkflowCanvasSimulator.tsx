@@ -28,6 +28,7 @@ import {
   Settings2,
   Pencil,
   Megaphone,
+  Bell,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -1215,8 +1216,18 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     setSelectedSlideIndex(0);
                     goLiveAt(item, 0);
                   }}
+                  // 2026-11-16: keyboard — Tab reaches the row (its Edit / Move / Remove then show and are next in Tab order);
+                  // Enter / Space selects it. preventDefault keeps the global Enter = GO LIVE shortcut out of it.
+                  tabIndex={0}
+                  aria-current={isSelected ? "true" : undefined}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                    e.preventDefault();
+                    setSelectedScheduleIndex(idx);
+                    setSelectedSlideIndex(0);
+                  }}
                   title="Double-click = LIVE (unang slide)"
-                  className={`group sched-row flex min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-12 lg:px-3.5 lg:text-sm ${
+                  className={`group sched-row flex outline-none focus-visible:ring-2 focus-visible:ring-accent min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-12 lg:px-3.5 lg:text-sm ${
                     isSelected ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent/40" : "text-fg hover:bg-surface-2"
                   }`}
                 >
@@ -1739,84 +1750,103 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                 </div>
               )}
 
-            {/* Alert ticker */}
-            <div className="border-t border-line pt-3">
-              <label htmlFor="sim-alert" className="eyebrow mb-1.5 block">
-                Nursery alert / message ticker
-              </label>
-              <div className="flex gap-1.5">
+            {/* 2026-11-16 (Sanctuary): Nursery + Stage as two slim bars like the mockup's stage bar (icon · input · button).
+                Labels became placeholders; the Stage presets + blink switch show only while its bar is in use. */}
+            <div className="space-y-2">
+              <div className="msg-bar" data-testid="nursery-bar">
+                <Bell className="h-4 w-4 shrink-0 text-accent-text" aria-hidden />
                 <input
                   id="sim-alert"
                   type="text"
                   value={customAlertInput}
                   onChange={(e) => setCustomAlertInput(e.target.value)}
-                  placeholder="Enter alert message (e.g. Parent #104)..."
-                  className="input h-8 flex-1 text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !liveState.nurseryAlertActive) {
+                      e.preventDefault();
+                      handleSendNurseryAlert();
+                    }
+                  }}
+                  placeholder="Nursery alert — Parent #104…"
+                  aria-label="Nursery alert / message ticker (lalabas sa projector)"
+                  className="msg-bar-input"
                 />
-                <button onClick={handleSendNurseryAlert} className={`btn ${liveState.nurseryAlertActive ? "btn-danger" : "btn-secondary"}`}>
-                  {liveState.nurseryAlertActive ? "Hide alert" : "Send alert"}
+                <button
+                  onClick={handleSendNurseryAlert}
+                  disabled={!customAlertInput && !liveState.nurseryAlertActive}
+                  className={`btn h-8 shrink-0 px-3 text-xs ${liveState.nurseryAlertActive ? "btn-danger" : "btn-secondary"}`}
+                  title="Ipakita sa projector bilang ticker"
+                >
+                  {liveState.nurseryAlertActive ? "Hide alert" : "Send"}
                 </button>
               </div>
-            </div>
 
-            {/* 2026-11-15 (Mira): Stage announcement — Stage screen only, never on the projector */}
-            <div className="border-t border-line pt-3" data-testid="stage-announce">
-              <div className="mb-1.5 flex items-center gap-2">
-                <label htmlFor="stage-msg" className="eyebrow inline-flex items-center gap-1.5">
-                  <Megaphone className="h-3.5 w-3.5" />
-                  Stage announcement
-                </label>
-                <span className="ml-auto text-xs text-fg-subtle">Musicians lang · wala sa projector</span>
-              </div>
-              <input
-                id="stage-msg"
-                type="text"
-                value={stageMsgInput}
-                maxLength={STAGE_MSG_MAX}
-                onChange={(e) => setStageMsgInput(e.target.value)}
-                onFocus={() => setPreviewOutputMode("foldback")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    sendStageMessage(stageMsgInput, stageMsgBlink);
-                  }
-                }}
-                placeholder="hal. Ulitin ang chorus"
-                className="input h-8 w-full text-xs"
-              />
-              <div className="mt-1.5 grid grid-cols-3 gap-1">
-                {STAGE_PRESETS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => {
-                      setStageMsgInput(p);
-                      setPreviewOutputMode("foldback");
+              {/* 2026-11-15 (Mira): Stage announcement — Stage screen only, never on the projector */}
+              <div className="group/stage" data-testid="stage-announce">
+                <div className="msg-bar">
+                  <Megaphone className="h-4 w-4 shrink-0 text-accent-text" aria-hidden />
+                  <input
+                    id="stage-msg"
+                    type="text"
+                    value={stageMsgInput}
+                    maxLength={STAGE_MSG_MAX}
+                    onChange={(e) => setStageMsgInput(e.target.value)}
+                    onFocus={() => setPreviewOutputMode("foldback")}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        sendStageMessage(stageMsgInput, stageMsgBlink);
+                      }
                     }}
-                    aria-pressed={stageMsgInput === p}
-                    className={`btn h-7 px-1.5 text-xs ${stageMsgInput === p ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-secondary"}`}
+                    placeholder="Stage announcement — Ulitin ang chorus…"
+                    aria-label="Stage announcement (musicians lang, wala sa projector)"
+                    className="msg-bar-input"
+                  />
+                  {liveState.stageMessageActive && (
+                    <button onClick={hideStageMessage} className="btn btn-ghost h-8 shrink-0 px-2.5 text-xs" data-testid="stage-hide">
+                      Hide
+                    </button>
+                  )}
+                  <button
+                    onClick={() => sendStageMessage(stageMsgInput, stageMsgBlink)}
+                    disabled={!stageMsgInput.trim()}
+                    className="btn btn-primary h-8 shrink-0 px-3.5 text-xs font-bold"
+                    title="Ipakita sa Stage screen (musicians lang)"
+                    data-testid="stage-send"
                   >
-                    {p}
+                    {liveState.stageMessageActive ? "Update" : "Send"}
                   </button>
-                ))}
+                </div>
+                {/* presets + blink: only while the Stage bar has focus (mousedown keeps the focus in the input) */}
+                <div className="mt-1.5 hidden flex-wrap items-center gap-1 group-focus-within/stage:flex" data-testid="stage-presets">
+                  {STAGE_PRESETS.map((p) => (
+                    <button
+                      key={p}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setStageMsgInput(p);
+                        setPreviewOutputMode("foldback");
+                      }}
+                      aria-pressed={stageMsgInput === p}
+                      className={`btn h-7 px-2 text-xs ${stageMsgInput === p ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-ghost text-fg-muted"}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 px-1 text-xs text-fg-muted" onMouseDown={(e) => e.preventDefault()}>
+                    <input type="checkbox" checked={stageMsgBlink} onChange={toggleStageBlink} className="h-3.5 w-3.5 accent-[var(--c-accent)]" />
+                    Kumislap
+                  </label>
+                </div>
+                {(liveState.stageMessageActive || !stageCount) && (
+                  <p className={`mt-1.5 flex items-center gap-1.5 px-1 text-xs ${liveState.stageMessageActive ? "text-warn-text" : "text-fg-subtle"}`} role="status">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${liveState.stageMessageActive ? "bg-warn" : "bg-fg-subtle"}`} />
+                    <span className="truncate">
+                      {liveState.stageMessageActive ? `Nasa Stage: "${liveState.stageMessageText}"` : "Walang announcement sa Stage"}
+                      {!stageCount && " · walang nakabukas na Stage screen"}
+                    </span>
+                  </p>
+                )}
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <label className="mr-auto inline-flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
-                  <input type="checkbox" checked={stageMsgBlink} onChange={toggleStageBlink} className="h-3.5 w-3.5 accent-[var(--c-accent)]" />
-                  Kumislap pag bagong labas
-                </label>
-                <button onClick={() => sendStageMessage(stageMsgInput, stageMsgBlink)} disabled={!stageMsgInput.trim()} className="btn btn-primary" data-testid="stage-send">
-                  <Send className="h-3.5 w-3.5" />
-                  {liveState.stageMessageActive ? "Update sa Stage" : "Send sa Stage"}
-                </button>
-                <button onClick={hideStageMessage} disabled={!liveState.stageMessageActive} className="btn btn-danger" data-testid="stage-hide">
-                  Hide
-                </button>
-              </div>
-              <p className={`mt-1.5 inline-flex items-center gap-1.5 text-xs ${liveState.stageMessageActive ? "text-warn-text" : "text-fg-subtle"}`} role="status">
-                <span className={`h-1.5 w-1.5 rounded-full ${liveState.stageMessageActive ? "bg-warn" : "bg-fg-subtle"}`} />
-                {liveState.stageMessageActive ? `Nasa Stage screen: "${liveState.stageMessageText}"` : "Walang announcement sa Stage screen"}
-                {!stageCount && " · walang nakabukas na Stage screen"}
-              </p>
             </div>
           </div>
         </section>

@@ -380,6 +380,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   const rows: SongItem[] = [...songRows, ...REFERENCE_SONGS.filter(matches).sort(byTitle)];
 
   // My Songs toolbar — quiet links. Phones: above the list. Desktop: the bottom of the Library card (footerSlot).
+  const inFooter = isDesktop && !!footerSlot;
   const tools = (
       <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 lg:-mx-1.5" data-testid="song-tools">
         <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} mr-1 bg-accent hover:bg-accent-hover text-on-accent border-accent lg:hidden`}>
@@ -418,14 +419,20 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           onChange={handleImportFolder}
           data-testid="folder-input"
         />
+        {/* 2026-11-16 (Sanctuary): desktop — the CouchDB status sits at the end of the footer links, like the mockup */}
+        {inFooter && (
+          <div className="ml-auto" data-testid="footer-couch">
+            <CouchSyncPanel />
+          </div>
+        )}
       </div>
   );
 
   return (
     <div className="space-y-2">
-      {isDesktop && footerSlot ? createPortal(tools, footerSlot) : tools}
+      {inFooter && footerSlot ? createPortal(tools, footerSlot) : tools}
 
-      <CouchSyncPanel />
+      {!inFooter && <CouchSyncPanel />}
 
       {!storageOk && (
         <p className="text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5 flex gap-1.5">
