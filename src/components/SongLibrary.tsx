@@ -40,7 +40,15 @@ interface SongLibraryProps {
   onAddToSchedule: (song: SongItem) => void;
   /** 2026-10-20: double-click a song row = add to schedule + LIVE. */
   onLiveSong?: (song: SongItem) => void;
+  /** 2026-11-16: the Library card's "+ New song" button (desktop) — a new number opens the editor. */
+  newSongTick?: number;
 }
+
+// 2026-11-16: last "+ New song" click already handled (kept outside the component: the Songs tab remounts)
+let handledNewSongTick = 0;
+// 2026-11-16 (Sanctuary): quiet text-style tools under the filter chips, like the mockup's footer links
+const quietBtn =
+  "tap-target inline-flex items-center gap-1 rounded-md px-1.5 py-1.5 lg:py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed shrink-0";
 
 const FILTERS: { id: SongFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -53,11 +61,17 @@ const FILTERS: { id: SongFilter; label: string }[] = [
 const smallBtn =
   "tap-target px-2.5 py-1.5 lg:py-1 rounded-md text-xs font-semibold border transition-all flex items-center gap-1 shrink-0";
 
-export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSchedule, onLiveSong }) => {
+export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSchedule, onLiveSong, newSongTick = 0 }) => {
   const [filter, setFilter] = useState<SongFilter>("all");
   const [mySongs, setMySongs] = useState<StoredSong[]>([]);
   const [storageOk, setStorageOk] = useState(true);
   const [editor, setEditor] = useState<{ mode: "new" | "edit"; id?: string; initial?: Partial<SongDraft> } | null>(null);
+  useEffect(() => {
+    if (newSongTick > handledNewSongTick) {
+      handledNewSongTick = newSongTick;
+      setEditor({ mode: "new" });
+    }
+  }, [newSongTick]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -361,13 +375,13 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
   return (
     <div className="space-y-2">
       {/* Filter chips */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
           <button
             key={f.id}
             onClick={() => setFilter(f.id)}
-            className={`tap-target px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-              filter === f.id ? "bg-accent text-on-accent border-accent" : "bg-surface-2 text-fg-muted border-line hover:bg-surface-3"
+            className={`tap-target px-3 py-1 rounded-md text-xs border transition-all ${
+              filter === f.id ? "bg-accent-soft text-accent-text border-transparent font-semibold" : "bg-transparent text-fg-muted border-line hover:bg-surface-3 font-medium"
             }`}
           >
             {f.label}
@@ -376,30 +390,30 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         ))}
       </div>
 
-      {/* My Songs toolbar */}
-      <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} bg-accent hover:bg-accent-hover text-on-accent border-accent`}>
+      {/* My Songs toolbar — 2026-11-16: quiet links (New Song sits in the Library card header on desktop) */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 lg:-mx-1.5">
+        <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} mr-1 bg-accent hover:bg-accent-hover text-on-accent border-accent lg:hidden`}>
           <FilePlus2 className="w-3.5 h-3.5" />
           New Song
         </button>
-        <button onClick={() => fileInputRef.current?.click()} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line`} title="Import: My Songs backup (.json), SongSelect (.txt, .usr, .bin) o ChordPro (.cho, .pro) — puwedeng marami">
-          <Upload className="w-3.5 h-3.5" />
+        <button onClick={() => fileInputRef.current?.click()} className={quietBtn} title="Import: My Songs backup (.json), SongSelect (.txt, .usr, .bin) o ChordPro (.cho, .pro) — puwedeng marami">
+          <Upload className="w-3.5 h-3.5 lg:hidden" />
           Import
         </button>
-        <button onClick={() => setBulk({ mode: "paste" })} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line`} title="Bulk Add: mag-paste ng maraming kanta nang sabay (--- sa pagitan ng bawat kanta)">
-          <ListPlus className="w-3.5 h-3.5" />
+        <button onClick={() => setBulk({ mode: "paste" })} className={quietBtn} title="Bulk Add: mag-paste ng maraming kanta nang sabay (--- sa pagitan ng bawat kanta)">
+          <ListPlus className="w-3.5 h-3.5 lg:hidden" />
           Bulk Add
         </button>
-        <button onClick={() => pptInputRef.current?.click()} disabled={readingFolder} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40`} title="Import PowerPoint: lyrics na nasa .pptx — bawat slide ay slide ng kanta; may preview muna bago i-save">
-          <Presentation className="w-3.5 h-3.5" />
+        <button onClick={() => pptInputRef.current?.click()} disabled={readingFolder} className={quietBtn} title="Import PowerPoint: lyrics na nasa .pptx — bawat slide ay slide ng kanta; may preview muna bago i-save">
+          <Presentation className="w-3.5 h-3.5 lg:hidden" />
           PPT
         </button>
-        <button onClick={() => folderInputRef.current?.click()} disabled={readingFolder} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40`} title="Import folder: lahat ng .txt / SongSelect / ChordPro sa isang folder (kasama ang subfolders); may preview muna">
-          <FolderOpen className="w-3.5 h-3.5" />
+        <button onClick={() => folderInputRef.current?.click()} disabled={readingFolder} className={quietBtn} title="Import folder: lahat ng .txt / SongSelect / ChordPro sa isang folder (kasama ang subfolders); may preview muna">
+          <FolderOpen className="w-3.5 h-3.5 lg:hidden" />
           {readingFolder ? "Binabasa..." : "Folder"}
         </button>
-        <button onClick={handleExport} disabled={mySongs.length === 0} className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line disabled:opacity-40 disabled:cursor-not-allowed`} title="Export My Songs (.json backup)">
-          <Download className="w-3.5 h-3.5" />
+        <button onClick={handleExport} disabled={mySongs.length === 0} className={quietBtn} title="Export My Songs (.json backup)">
+          <Download className="w-3.5 h-3.5 lg:hidden" />
           Export
         </button>
         <input ref={pptInputRef} type="file" multiple accept=".pptx,.ppt,.pps" className="hidden" onChange={handlePptFiles} data-testid="ppt-input" />
@@ -452,9 +466,9 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
               void withBackground(song).then(onLiveSong);
             }}
             title={isRef ? undefined : "Double-click = Add + LIVE"}
-            className={`bg-surface-2 hover:bg-surface-3 border border-line rounded-lg p-2.5 lg:py-1.5 transition-all text-xs group shadow-xs ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
+            className={`hover:bg-surface-2 rounded-lg p-2 transition-colors text-xs group ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
           >
-            <div className="flex items-center justify-between gap-2.5">
+            <div className="flex items-center justify-between gap-3">
               {/* 2026-11-15 (Sanctuary): key tile, like the mockup (— = no key / reference) */}
               <span
                 className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border font-display text-sm font-medium ${
@@ -465,7 +479,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                 {isRef ? "—" : song.key || "♪"}
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-fg truncate flex items-center gap-1.5">
+                <div className="text-sm font-semibold text-fg truncate flex items-center gap-1.5">
                   <span className="truncate">{song.title}</span>
                   {isUser && <span className="shrink-0 px-1.5 rounded bg-accent-soft text-accent-text border border-accent/30 text-xs font-medium">My Song</span>}
                   {isUser && song.bgId && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-accent-text" aria-label="May sariling background" />}
@@ -474,21 +488,14 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                   {isRef ? (
                     // 2026-10-29: "Reference" badge moved here from the title line, so long titles aren't cut short
                     <>
-                      <span className="shrink-0 px-1.5 rounded bg-surface-3 text-fg-muted border border-line text-xs font-medium">Reference</span>
-                      <span className="shrink-0 whitespace-nowrap">Walang lyrics</span>
+                      <span className="truncate">Reference · walang lyrics</span>
                     </>
                   ) : (
-                    <>
-                      <span className="shrink-0 whitespace-nowrap">Key: {song.key || "—"}</span>
-                      <span>•</span>
-                      <span className="shrink-0 whitespace-nowrap">{song.slides.length} Slides</span>
-                    </>
-                  )}
-                  {song.author && (
-                    <>
-                      <span>•</span>
-                      <span className="truncate">{song.author}</span>
-                    </>
+                    // 2026-11-16: "4 slides · Author" (the key is already on the tile; slides first so a long author can't push it out)
+                    <span className="truncate">
+                      {song.slides.length} slides
+                      {song.author ? ` · ${song.author}` : ""}
+                    </span>
                   )}
                 </div>
               </div>
@@ -500,16 +507,16 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                       href={`${SONGSELECT_SEARCH_URL}${encodeURIComponent(song.title)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`${smallBtn} bg-surface-2 hover:bg-surface-3 text-fg border-line`}
+                      className="icon-btn"
                       title="Hanapin sa CCLI SongSelect (kailangan ng account)"
                       aria-label={`Hanapin ang ${song.title} sa SongSelect`}
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ExternalLink />
                       {/* 2026-10-28: icon only, so the song title has room */}
                     </a>
                     <button
                       onClick={() => setEditor({ mode: "new", initial: { title: song.title, author: song.author } })}
-                      className={`${smallBtn} bg-accent-soft hover:bg-accent/20 text-accent-text border-accent/30`}
+                      className={`${smallBtn} h-8 border-line-strong text-fg-muted hover:border-accent hover:text-accent-text`}
                       title="Gumawa ng My Song at i-paste ang lyrics"
                       aria-label={`Add lyrics: ${song.title}`}
                     >
@@ -530,7 +537,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                           title="Edit"
                           aria-label={`Edit ${song.title}`}
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil />
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(song.id)}
@@ -538,7 +545,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                           title="Delete"
                           aria-label={`Delete ${song.title}`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 />
                         </button>
                       </>
                     )}
@@ -554,11 +561,11 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                     ) : (
                       <button
                         onClick={() => void withBackground(song).then(onAddToSchedule)}
-                        className={`${smallBtn} bg-accent-soft hover:bg-accent/20 text-accent-text border-accent/30`}
+                        className="icon-btn"
                         title="Add to Service Schedule"
+                        aria-label={`Add to schedule: ${song.title}`}
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add
+                        <Plus />
                       </button>
                     )}
                   </>
