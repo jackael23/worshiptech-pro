@@ -38,6 +38,8 @@ Production build: `npm run build`, saka patakbuhin na may `NODE_ENV=production`:
 
 ## Phone remote (parehong WiFi)
 
+**Paid feature (Basic / Pro).** Kailangang naka-login sa laptop ang account na may plan (tingnan ang "Account" sa ibaba); ang CouchDB admin ay bilang Pro. Kung wala, "naka-lock" ang lalabas sa Phone remote panel at walang makokontrol ang phone kahit alam ang PIN.
+
 1. Patakbuhin ang app sa laptop (`npm run dev` o ang production build) at buksan ang http://localhost:3000.
 2. **Simulator → Output → Phone remote**: makikita ang **PIN** at ang link (hal. `http://192.168.1.25:3000/?remote`).
 3. Sa phone (parehong WiFi): buksan ang link at ilagay ang PIN.
@@ -56,7 +58,7 @@ Mga paalala:
 
 ## Account (login) at subscription plan
 
-Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync) — **sa ngayon wala pang naka-lock**; login pa lang ang nakalagay.
+Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync). **Naka-lock na ang phone remote** (Basic o Pro plan); ang iba ay hindi pa.
 
 - **Account button** (icon ng tao sa app bar): Login, Gumawa ng account, Logout, at kung anong plan.
 - Isang account = isang simbahan. Email ang login name.

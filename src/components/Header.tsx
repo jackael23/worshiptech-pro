@@ -11,7 +11,7 @@ import { EasyWorshipVersion, SupportedLanguage } from "../types";
 import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize, CircleUserRound } from "lucide-react";
 import { AppearancePanel } from "./AppearancePanel";
 import { AccountModal } from "./AccountModal";
-import { useAuth } from "../lib/auth";
+import { onOpenAccount, useAuth } from "../lib/auth";
 import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
 import type { Appearance } from "../lib/appearance";
 
@@ -87,6 +87,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
   // 2026-11-16: account (optional login; the plan unlocks paid features — lib/auth.ts)
   const [showAccount, setShowAccount] = useState(false);
   const auth = useAuth();
+  useEffect(() => onOpenAccount(() => setShowAccount(true)), []);
   const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-login o gumawa ng account";
   return (
     // 2026-11-15 (Sanctuary mockup): desktop app bar sits on the canvas (no bar color), controls are grouped boxes

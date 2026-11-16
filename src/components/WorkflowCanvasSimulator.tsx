@@ -22,6 +22,7 @@ import {
   Presentation as PresentationIcon,
   Smartphone,
   RefreshCw,
+  Lock,
   Type as TypeIcon,
   SwatchBook,
   X,
@@ -51,6 +52,8 @@ import { StageView, loadStagePrefs, STAGE_PREFS_KEY, StagePrefs } from "./StageS
 import { openOutputWindow, canUseSecondScreen, listScreens, loadScreenChoice, ScreenChoice, OutputKind } from "../lib/liveChannel";
 import type { StoredPresentation } from "../lib/presentationStore";
 import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
+import { openAccount, useAuth } from "../lib/auth";
+import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary } from "./MediaLibrary";
@@ -818,9 +821,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         return false;
     }
   };
+  // 2026-11-16: phone remote is a paid feature (Basic / Pro) — lib/entitlements.ts
+  const auth = useAuth();
+  const remoteAllowed = auth.status === "loading" ? null : hasFeature(planFromRoles(auth.roles), "remote");
   const remote = useRemoteHost((cmd) => {
     if (!handleRemoteScheduleCmd(cmd)) handleRemoteCmd(cmd);
-  });
+  }, remoteAllowed);
   // Library for the phones: song titles (Hymns + My Songs, no lyrics) + imported Bibles
   const [bibleList, setBibleList] = useState<BibleMeta[]>([]);
   useEffect(() => {
@@ -1617,7 +1623,26 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     </div>
                   )}
 
-                  {tool === "phone" && (
+                  {tool === "phone" && remote.availability === "locked" && (
+                    <div className="space-y-2 text-xs text-fg-muted" data-testid="remote-locked">
+                      <p className="inline-flex items-center gap-1.5 font-semibold text-fg">
+                        <Lock className="h-3.5 w-3.5" />
+                        Para sa Basic at Pro plan ang phone remote
+                      </p>
+                      <p>Kontrolin ang Live, schedule, Bible at alerts mula sa phone sa parehong WiFi. Libre pa rin ang songs, Bible at projection.</p>
+                      {auth.status === "user" ? (
+                        <p className="notice-warn">
+                          Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>. Wala pang online na bayad sa app — kapag na-upgrade na ang account, kusa itong mabubuksan dito.
+                        </p>
+                      ) : (
+                        <button onClick={openAccount} className="btn btn-primary btn-sm" data-testid="remote-locked-login">
+                          Mag-login o gumawa ng account
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {tool === "phone" && remote.availability !== "locked" && (
                     <div className="space-y-2 text-xs text-fg-muted">
                       <p className={`inline-flex items-center gap-1.5 ${remote.phones ? "text-fg" : "text-fg-subtle"}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${remote.phones ? "bg-ok" : "bg-fg-subtle"}`} />

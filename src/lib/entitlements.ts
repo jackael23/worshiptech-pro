@@ -21,7 +21,10 @@ export function planFromRoles(roles: readonly string[]): Plan {
   return "free";
 }
 
-// Which tier gets which feature is NOT final (Jack to confirm) — nothing is locked with this yet.
+// Proposed split (Jack has not decided yet): Basic = what runs on the church's own laptop,
+// Pro = adds cloud sync, the only part that costs us server money every month.
+// Locked so far: "remote" (2026-11-16). "schedule" will mean SAVED lineups / planning ahead —
+// the one working Schedule stays free, it is the only way to go live.
 const FEATURES: Record<Plan, readonly Feature[]> = {
   free: [],
   basic: ["remote", "schedule"],

@@ -98,7 +98,8 @@ export function scheduleForRemote(items: ScheduleItem[]): RemoteSnapshot["schedu
 
 // ---------- laptop side ----------
 
-export type RemoteAvailability = "checking" | "ready" | "not-local" | "no-server";
+/** 2026-11-16: "locked" = the account's plan has no phone remote (paid feature). */
+export type RemoteAvailability = "checking" | "ready" | "not-local" | "no-server" | "locked";
 
 export interface RemoteHost {
   availability: RemoteAvailability;
@@ -120,8 +121,11 @@ export interface RemoteHost {
 /**
  * Connects the Simulator to the local server's remote bridge.
  * onCmd is called for every command from a phone (always the latest function is used).
+ * 2026-11-16: `allowed` — does the account's plan include the phone remote? (null = still
+ * checking the account). Not allowed = this tab never connects to the bridge, so phones get
+ * "laptop not connected" and no command reaches the Simulator.
  */
-export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
+export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void, allowed: boolean | null): RemoteHost {
   const [availability, setAvailability] = useState<RemoteAvailability>("checking");
   const [pin, setPin] = useState("");
   const [urls, setUrls] = useState<string[]>([]);
@@ -134,6 +138,15 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
   const resendRef = useRef<() => void>(() => {});
 
   useEffect(() => {
+    if (!allowed) {
+      setAvailability(allowed === null ? "checking" : "locked");
+      setPin("");
+      setUrls([]);
+      setPhones(0);
+      setActive(true);
+      return;
+    }
+    setAvailability("checking");
     let es: EventSource | null = null;
     let stopped = false;
     (async () => {
@@ -185,8 +198,9 @@ export function useRemoteHost(onCmd: (cmd: RemoteCmd) => void): RemoteHost {
     return () => {
       stopped = true;
       es?.close();
+      activeRef.current = false;
     };
-  }, []);
+  }, [allowed]);
 
   // Snapshots: debounced, pictures shrunk, only the latest one is sent.
   const pending = useRef<RemoteSnapshot | null>(null);

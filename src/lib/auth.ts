@@ -20,6 +20,7 @@ export const DEFAULT_ACCOUNT_URL = "http://localhost:5984";
 const CACHE_KEY = "wtp-auth-v1";
 const OFFLINE_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
 const KEEPALIVE_MS = 4 * 60 * 1000;
+const SESSION_TIMEOUT_MS = 8000;
 export const PASSWORD_MIN = 8;
 
 export const trimUrl = (url: string) => url.replace(/\/+$/, "");
@@ -36,7 +37,8 @@ export interface CouchSession {
 /** Who is logged in at that CouchDB (name null = nobody). */
 export async function couchSession(base: string): Promise<CouchSession> {
   try {
-    const res = await fetch(`${trimUrl(base)}/_session`, { credentials: "include" });
+    // The timeout matters: paid features wait for this answer (a server that never replies = offline).
+    const res = await fetch(`${trimUrl(base)}/_session`, { credentials: "include", signal: AbortSignal.timeout(SESSION_TIMEOUT_MS) });
     if (res.status >= 500) return { name: null, roles: [], reachable: false };
     if (!res.ok) return { name: null, roles: [], reachable: true };
     const j = (await res.json()) as { userCtx?: { name?: unknown; roles?: unknown } };
@@ -181,6 +183,14 @@ export function subscribeAuth(fn: () => void): () => void {
 }
 
 export const useAuth = (): AuthState => useSyncExternalStore(subscribeAuth, getAuth);
+
+// "Open the Account window" from anywhere (e.g. a locked feature); the app bar listens.
+const ACCOUNT_EVENT = "wtp-open-account";
+export const openAccount = () => window.dispatchEvent(new Event(ACCOUNT_EVENT));
+export function onOpenAccount(fn: () => void): () => void {
+  window.addEventListener(ACCOUNT_EVENT, fn);
+  return () => window.removeEventListener(ACCOUNT_EVENT, fn);
+}
 
 /** Emails are stored in small letters at sign-up; other names (e.g. a CouchDB admin) stay as typed. */
 const cleanName = (name: string) => (name.includes("@") ? name.trim().toLowerCase() : name.trim());

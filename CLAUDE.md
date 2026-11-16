@@ -58,7 +58,8 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Auth and subscriptions
 
-Login is done (2026-11-16); nothing is locked behind a plan yet.
+Login is done and the phone remote is locked behind Basic / Pro (2026-11-16). Saved lineups
+and cloud sync are not locked yet (they do not exist as paid features yet).
 
 How it works:
 
@@ -83,13 +84,18 @@ Decisions (confirmed by Jack 2026-11-16):
 - Roles come back in `GET /_session`, so CouchDB can enforce them on cloud DBs (`_security`).
 - Offline: last known name + roles are cached in localStorage (`wtp-auth-v1`) for 14 days.
 - Client-side gating is UX only; laptop-only features (remote, schedule) can only be soft-locked.
+- Phone remote lock: `useRemoteHost(onCmd, allowed)` in `remoteLink.ts` — when the plan has no
+  "remote", the laptop tab never connects to the bridge (phones see "laptop not connected") and
+  the Phone remote panel shows the upgrade / login prompt. Soft lock (client-side).
 - Account server == sync server → one cookie: account logout stops sync (`watchAuth` in couchSync.ts).
 
 Still open / next:
 
-- Which features go in Basic vs Pro, and what "lineup schedule" means as a paid feature (the
-  single working schedule must stay free — it is the only way to go live).
-- Add the actual gates (phone remote first), with an upgrade prompt.
+- The single working Schedule must stay free — it is the only way to go live.
+- Tiers: Jack has not decided. Proposed (in `entitlements.ts`): Basic = phone remote + saved
+  lineups (laptop-only features); Pro = Basic + cloud sync (the part with a monthly server cost).
+- "Lineup schedule" as a paid feature = saving several lineups / planning future services
+  (to be built). Lock it with `hasFeature(plan, "schedule")`.
 - PayMongo webhook → sets / removes the plan role (and expiry; roles alone have no end date).
 - Cloud: CouchDB must be same-site with the app (cross-site cookies are blocked); per-church
   databases — a new account currently has no access to `wtp_*` databases (admin-only by default).
@@ -106,3 +112,4 @@ Still open / next:
 - 2026-11-16: Project context saved; codebase reviewed; login plan agreed.
 - 2026-11-16: Login implemented and tested against a real CouchDB 3.5 (sign-up, login, logout,
   expired session, offline grace, role change by admin, shared login with the sync panel).
+- 2026-11-16: Phone remote locked to Basic / Pro; tested anonymous, Free, Basic, offline, logout.
