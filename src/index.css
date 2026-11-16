@@ -509,6 +509,29 @@
    show when it is selected, hovered or focused; other rows show their slide count instead.
    Touch-only screens (no hover) keep the buttons always visible. Plain CSS because .icon-btn-group is unlayered. */
 .sched-meta { display: none; }
+/* 2026-11-16 (Sanctuary): slim message bar under GO LIVE (Nursery alert, Stage announcement) — icon · input · button in one box */
+.msg-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.875rem;
+  border-radius: 8px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  transition: border-color 0.12s;
+}
+.msg-bar:focus-within { border-color: var(--c-accent); }
+.msg-bar-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2.25rem;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--c-fg);
+  font-size: 0.8125rem;
+}
+.msg-bar-input::placeholder { color: var(--c-fg-subtle); }
 /* 2026-11-16 (b): key tile of a Library song row — a soft tint per key letter (--key-hue), readable in light and dark */
 .key-tile {
   background: hsl(var(--key-hue) 55% 55% / 0.16);
