@@ -293,6 +293,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   const [previewOutputMode, setPreviewOutputMode] = useState<"main" | "foldback" | "ndi">("main");
   const [customAlertInput, setCustomAlertInput] = useState("Nursery: Parent #104 please come to Nursery");
+  // 2026-11-16: "+ New song" in the Library card header → opens the editor inside SongLibrary
+  const [newSongTick, setNewSongTick] = useState(0);
+  // 2026-11-16 (b): bottom strip of the Library card — SongLibrary draws its Import / Bulk Add / … links here on desktop
+  const [libFooterEl, setLibFooterEl] = useState<HTMLDivElement | null>(null);
   const [simulatedTime, setSimulatedTime] = useState("");
   // 2026-11-15 (Mira): Stage announcement (musicians only) — draft text, blink switch (remembered),
   // and the Stage window's transpose / size / chords (same browser storage) for the "Stage monitor" preview
@@ -1068,18 +1072,29 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
           ))}
         {/* ---------- PANEL 1: LIBRARY ---------- */}
         <section ref={libRef} className={`${panelVis("library")} sim-card min-h-0 flex-col overflow-hidden`} aria-label="Library">
-          <div className="space-y-2.5 border-b border-line p-3 lg:px-4 lg:pt-3.5">
-            <div className="hidden items-center justify-between lg:flex">
-              <span className="section-title">Library</span>
-              <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="btn btn-ghost btn-sm" title="Magtanong sa Chat">
-                <Sparkles className="h-3.5 w-3.5 text-accent-text" />
-                Ask in Chat
+          <div className="space-y-2.5 border-b border-line p-3 lg:space-y-3.5 lg:border-0 lg:px-5 lg:pb-2 lg:pt-5">
+            {/* 2026-11-16 (Sanctuary): "+ New song" in the card header like the mockup; Ask in Chat = the small icon beside it */}
+            <div className="hidden items-center gap-2 lg:flex">
+              <span className="section-title mr-auto">Library</span>
+              <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="icon-btn" title="Ask in Chat" aria-label="Ask in Chat">
+                <Sparkles />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveMediaTab("songs");
+                  setNewSongTick(Date.now());
+                }}
+                className="btn btn-primary h-8"
+                data-testid="new-song"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New song
               </button>
             </div>
             <div className="seg grid w-full grid-cols-4" role="tablist" aria-label="Library">
               {libraryTabs.map(({ id, label, icon: Icon, title }) => (
                 <button key={id} role="tab" aria-selected={activeMediaTab === id} onClick={() => setActiveMediaTab(id)} title={title} className="seg-item w-full px-1">
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <Icon className="h-3.5 w-3.5 shrink-0 lg:hidden" />
                   <span>{label}</span>
                 </button>
               ))}
@@ -1099,14 +1114,14 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     ? "Hanapin ang presentation o salita sa slide..."
                     : "Hanapin ang larawan o background…"
                 }
-                className="input h-8 pl-8 text-xs"
+                className="input h-8 pl-8 text-xs lg:h-10 lg:pl-9 lg:text-sm"
               />
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 lg:px-5 lg:pb-3">
             {/* Songs — samples, My Songs, reference (2026-10-20) */}
-            {activeMediaTab === "songs" && <SongLibrary searchQuery={searchQuery} onAddToSchedule={handleAddSongToSchedule} onLiveSong={handleLiveSong} />}
+            {activeMediaTab === "songs" && <SongLibrary searchQuery={searchQuery} onAddToSchedule={handleAddSongToSchedule} onLiveSong={handleLiveSong} newSongTick={newSongTick} footerSlot={libFooterEl} />}
 
             {/* Scripture — samples + imported full Bibles (2026-10-20) */}
             {activeMediaTab === "scriptures" && <BibleLibrary searchQuery={searchQuery} onAddPassage={handleAddPassage} onLivePassage={handleLivePassage} />}
@@ -1127,13 +1142,15 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               />
             )}
           </div>
+          <div ref={setLibFooterEl} className="hidden shrink-0 px-5 pb-4 pt-1 empty:hidden lg:block" data-testid="library-footer" />
         </section>
 
         {/* ---------- PANEL 2: SCHEDULE + SLIDES ---------- */}
         <section ref={schedRef} className={`${panelVis("schedule")} sim-card min-h-0 flex-col overflow-hidden`} aria-label="Schedule">
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3 lg:h-14 lg:px-4">
-            <span className="section-title">
-              Schedule <span className="ml-1 font-mono text-xs font-normal text-fg-subtle">{scheduleItems.length}</span>
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-3 lg:h-16 lg:border-0 lg:px-5 lg:pt-1">
+            <span className="section-title mr-auto">Schedule</span>
+            <span className="text-xs text-fg-subtle">
+              {scheduleItems.length} {scheduleItems.length === 1 ? "item" : "items"}
             </span>
             <button
               onClick={() => {
@@ -1178,7 +1195,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
           {/* 2026-10-28: taller list + bigger rows (sabi ni Jack: "lakihan / habaan ang schedule") */}
           <div
             ref={schedListRef}
-            className={`max-h-[45%] min-h-[9rem] shrink-0 space-y-1 overflow-y-auto border-b border-line p-2 ${layout.schedList ? "lg:h-[var(--wtp-sched-list)] lg:max-h-none" : "lg:max-h-[50%]"}`}
+            className={`max-h-[45%] min-h-[9rem] shrink-0 space-y-1 overflow-y-auto border-b border-line p-2 lg:px-4 lg:pb-3 lg:pt-0 ${layout.schedList ? "lg:h-[var(--wtp-sched-list)] lg:max-h-none" : "lg:max-h-[50%]"}`}
             style={layout.schedList ? ({ "--wtp-sched-list": `${layout.schedList}%` } as React.CSSProperties) : undefined}
             data-testid="schedule-list"
           >
@@ -1199,15 +1216,27 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     goLiveAt(item, 0);
                   }}
                   title="Double-click = LIVE (unang slide)"
-                  className={`group flex min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-11 ${
-                    isSelected ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent/50" : "text-fg-muted hover:bg-surface-3 hover:text-fg"
+                  className={`group sched-row flex min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-12 lg:px-3.5 lg:text-sm ${
+                    isSelected ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent/40" : "text-fg hover:bg-surface-2"
                   }`}
                 >
-                  <span className="w-6 shrink-0 text-right font-mono text-sm tabular-nums text-fg-subtle">{String(idx + 1).padStart(2, "0")}</span>
-                  <TypeIcon className={`h-4 w-4 shrink-0 ${isSelected ? "text-accent-text" : "text-fg-subtle"}`} />
-                  <span className={`min-w-0 flex-1 truncate ${isSelected ? "font-medium" : ""}`}>{cleanTitle(item.title)}</span>
-                  {isItemLive && <span className="badge badge-live px-1 py-0 leading-4">LIVE</span>}
-                  <div className="icon-btn-group">
+                  <span className={`w-6 shrink-0 font-mono text-xs tabular-nums ${isSelected ? "text-accent-text" : "text-fg-subtle"}`}>{String(idx + 1).padStart(2, "0")}</span>
+                  <TypeIcon className={`h-4 w-4 shrink-0 lg:hidden ${isSelected ? "text-accent-text" : "text-fg-subtle"}`} />
+                  <span className={`min-w-0 flex-1 truncate ${isSelected ? "font-semibold" : ""}`}>{cleanTitle(item.title)}</span>
+                  {isItemLive && (
+                    <span className="badge badge-live-soft">
+                      <span className="h-1.5 w-1.5 rounded-full bg-live" />
+                      LIVE
+                    </span>
+                  )}
+                  {/* 2026-11-16 (Sanctuary): quiet rows like the mockup — on desktop the Edit / Move / Remove buttons
+                      show on the selected row and on hover (phones: always, there is no hover) */}
+                  {!isItemLive && !isSelected && (
+                    <span className="sched-meta shrink-0 text-xs text-fg-subtle">
+                      {item.slides.length} {item.slides.length === 1 ? "slide" : "slides"}
+                    </span>
+                  )}
+                  <div className={`icon-btn-group ${isSelected ? "" : "sched-actions-quiet"}`}>
                     {item.type === "song" && (
                       <button
                         onClick={(e) => {
@@ -1278,9 +1307,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
 
           {/* slides of the selected item */}
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 pt-2.5">
-              <span className="section-title truncate">
-                Slides <span className="ml-1 font-mono text-xs font-normal text-fg-subtle">{currentScheduleItem?.slides?.length || 0}</span>
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 pt-2.5 lg:px-5 lg:pb-2 lg:pt-4">
+              <span className="eyebrow truncate tracking-[0.14em]">
+                Slides <span className="ml-1 font-mono font-normal tracking-normal">{currentScheduleItem?.slides?.length || 0}</span>
               </span>
               <span className="hidden items-center gap-1 text-xs text-fg-subtle sm:flex" title="Click = preview • Double-click = LIVE • ↑/↓ slides • Page Down = Go Live">
                 <span className="kbd">↑</span>
@@ -1290,7 +1319,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                 double-click = live
               </span>
             </div>
-            <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2.5 overflow-y-auto px-3 pb-3 pt-1">
+            <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2.5 overflow-y-auto px-3 pb-3 pt-1 lg:gap-3.5 lg:px-5 lg:pb-5 lg:pt-1.5">
               {currentScheduleItem?.slides?.map((slide, sIdx) => {
                 const isSlideSelected = selectedSlideIndex === sIdx;
                 const isSlideLive = liveState.isLive && liveState.activeScheduleItemId === currentScheduleItem.id && liveState.activeSlideIndex === sIdx;
@@ -1329,9 +1358,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             toolbar with popovers, so Preview + Live + GO LIVE stay on screen. Preview | Live sit
             side by side when the column is wide enough (like EasyWorship / ProPresenter). */}
         <section ref={outRef} className={`${panelVis("live")} sim-card @container/out relative min-h-0 flex-col overflow-hidden`} aria-label="Output">
-          <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3 lg:h-14 lg:px-4">
+          <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3 lg:h-16 lg:border-0 lg:px-5 lg:pt-1">
             {/* 2026-11-07: label hidden on narrow columns so the 4th tool (Theme) + Main/Foldback/NDI still fit */}
-            <span className="section-title mr-1 hidden @[26rem]/out:inline">Output</span>
+            <span className="section-title mr-2 hidden @[26rem]/out:inline">Output</span>
             {([
               ["projector", "Projector output", "Projector", MonitorUp, outputCount > 0 || stageCount > 0],
               ["phone", "Phone remote", "Phone", Smartphone, remote.phones > 0],
@@ -1370,36 +1399,42 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 lg:space-y-4 lg:px-5 lg:pb-5 lg:pt-0.5">
             {/* Preview | Live — side by side when wide, Live first when narrow */}
             <div className="grid gap-3 @[40rem]/out:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] @[40rem]/out:items-end">
-              <div className="order-2 @[40rem]/out:order-1">
-                <div className="mb-1.5 flex items-center gap-1.5 text-xs">
-                  <span className="font-medium text-fg-muted">Preview</span>
-                  {currentPreviewSlide?.label && <span className="truncate text-fg-subtle">· {currentPreviewSlide.label}</span>}
-                </div>
-                <div className="max-w-[60%] overflow-hidden rounded-md ring-1 ring-accent/50 @[40rem]/out:max-w-none" data-testid="preview-screen">
+              {/* 2026-11-16 (Sanctuary): narrow column = small Preview thumbnail with "Next up" beside it (mockup) */}
+              <div className="order-2 flex items-center gap-3.5 @[40rem]/out:order-1 @[40rem]/out:flex-col-reverse @[40rem]/out:items-stretch @[40rem]/out:gap-2">
+                <div className="w-[38%] max-w-48 shrink-0 overflow-hidden rounded-md ring-1 ring-accent/60 @[40rem]/out:w-auto @[40rem]/out:max-w-none" data-testid="preview-screen">
                   <SlideScreen slide={currentPreviewSlide} background={currentScheduleItem?.background} textScale={6} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem?.bgSettings} bgVideoId={videoOf(currentScheduleItem, currentPreviewSlide)} ariaHidden />
+                </div>
+                <div className="min-w-0 @[40rem]/out:flex @[40rem]/out:items-baseline @[40rem]/out:gap-2">
+                  <div className="eyebrow tracking-[0.14em] text-accent-text">Preview · next up</div>
+                  {currentPreviewSlide?.label && <div className="mt-1 truncate text-sm text-fg @[40rem]/out:mt-0 @[40rem]/out:text-xs @[40rem]/out:text-fg-muted">{cleanTitle(currentPreviewSlide.label)}</div>}
                 </div>
               </div>
               <div className="order-1 @[40rem]/out:order-2">
   {/* LIVE screen */}
               <div>
-                <div className="mb-2 flex items-center justify-between text-xs">
-                  <span className="inline-flex items-center gap-2 font-medium text-fg">
-                    <span className="relative flex h-2 w-2">
-                      {liveOnAir && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-60" />}
-                      <span className={`relative inline-flex h-2 w-2 rounded-full ${liveOnAir ? "bg-live" : "bg-fg-subtle"}`} />
+                {/* 2026-11-16 (Sanctuary): the status sits on the screen ("● ON AIR") like the mockup, not in a row above it */}
+                <div className={`relative overflow-hidden rounded-lg ${liveOnAir ? "live-frame" : "ring-1 ring-line"}`} data-testid="live-monitor">
+                  {/* 2026-11-16: the output name is written beside the status again (it was only a tooltip that never showed) */}
+                  <div className="pointer-events-none absolute left-2.5 right-2.5 top-2.5 z-10 flex items-center gap-1.5">
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold uppercase leading-none tracking-[0.08em] ${
+                      liveOnAir ? "bg-live text-white" : "bg-black/60 text-zinc-200"
+                    }`}
+                    data-testid="live-status"
+                  >
+                    <span className="relative flex h-1.5 w-1.5">
+                      {liveOnAir && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-70" />}
+                      <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${liveOnAir ? "bg-white" : "bg-zinc-400"}`} />
                     </span>
-                    Live
-                    <span className="text-fg-subtle">
-                      · {previewOutputMode === "main" ? "Main projector" : previewOutputMode === "foldback" ? "Stage monitor" : "OBS stream (NDI)"}
-                    </span>
+                    {liveState.isLive ? liveStateLabel : "Standby"}
                   </span>
-                  <span className={`badge ${liveState.isBlackout ? "" : liveState.isLive ? "badge-live" : ""}`}>{liveState.isLive ? liveStateLabel : "Standby"}</span>
-                </div>
-
-                <div className={`overflow-hidden rounded-lg ${liveOnAir ? "live-frame" : "ring-1 ring-line"}`} data-testid="live-monitor">
+                  <span className="truncate rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium leading-none text-zinc-200" data-testid="live-output-label">
+                    {previewOutputMode === "main" ? "Main projector" : previewOutputMode === "foldback" ? "Stage monitor" : "OBS stream (NDI)"}
+                  </span>
+                  </div>
                   {/* MAIN — same component as the projector window (2026-10-28) */}
                   {previewOutputMode === "main" && <LiveMainScreen liveState={shownLive} operator />}
 
@@ -1433,7 +1468,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             </div>
 
             {/* GO LIVE + Black / Clear / Logo in one row */}
-            <div className="grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto] gap-1.5">
+            <div className="go-row grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto] gap-1.5 lg:gap-2">
               <button onClick={handleGoLive} className="btn btn-live btn-lg h-12 w-full">
                 <Play className="h-4 w-4 fill-current" />
                 GO LIVE
