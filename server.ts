@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { HOTKEYS_TEXT, HOTKEYS_VERIFIED_FOR } from "./src/data/easyworshipData";
 import { isLocal, registerRemoteRoutes } from "./remoteServer";
+import { registerAuthRoutes } from "./authServer";
 
 dotenv.config();
 
@@ -135,6 +136,8 @@ async function startServer() {
   registerRemoteRoutes(app, PORT);
   registerAutoStop(app);
   app.use(express.json({ limit: LIMITS.BODY_MAX }));
+  // 2026-11-16: accounts (sign-up + which CouchDB holds them) — see authServer.ts
+  registerAuthRoutes(app);
 
   // Health check
   app.get("/api/health", (_req, res) => {

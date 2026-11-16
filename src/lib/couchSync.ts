@@ -10,6 +10,7 @@
  *    (local "wtp-media-pdb", remote wtp_media; the file itself is an attachment).
  */
 import PouchDB from "pouchdb-browser";
+import { getAuth, getAuthConfig, subscribeAuth, trimUrl } from "./auth";
 
 export type DbKind = "songs" | "bibles" | "presentations" | "media";
 export const DB_KINDS: DbKind[] = ["songs", "bibles", "presentations", "media"];
@@ -155,45 +156,14 @@ export function validateCouchSettings(s: CouchSettings): string | null {
   return null;
 }
 
-const baseUrl = (s: CouchSettings) => s.url.replace(/\/+$/, "");
+/** The CouchDB address of these settings, without a trailing slash. */
+export const couchBase = (s: CouchSettings) => trimUrl(s.url);
+const baseUrl = couchBase;
 const withCookies: typeof fetch = (input, init) => PouchDB.fetch(input as string, { ...init, credentials: "include" });
 
-/** Logs in to CouchDB (session cookie). The password is only sent, never saved. */
-export async function couchLogin(s: CouchSettings, password: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch(`${baseUrl(s)}/_session`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: s.username, password }),
-    });
-    if (res.ok) return { ok: true };
-    if (res.status === 401) return { ok: false, error: "Mali ang username o password." };
-    return { ok: false, error: `CouchDB: HTTP ${res.status}` };
-  } catch {
-    return { ok: false, error: "Hindi maabot ang CouchDB. Bukas ba ito, at naka-enable ang CORS (credentials) para sa address ng app?" };
-  }
-}
-
-/** Who is logged in (null = nobody / unreachable). */
-export async function couchSessionUser(s: CouchSettings): Promise<{ name: string | null; reachable: boolean }> {
-  try {
-    const res = await fetch(`${baseUrl(s)}/_session`, { credentials: "include" });
-    if (!res.ok) return { name: null, reachable: true };
-    const j = (await res.json()) as { userCtx?: { name?: string | null } };
-    return { name: j.userCtx?.name ?? null, reachable: true };
-  } catch {
-    return { name: null, reachable: false };
-  }
-}
-
-export async function couchLogout(s: CouchSettings): Promise<void> {
-  try {
-    await fetch(`${baseUrl(s)}/_session`, { method: "DELETE", credentials: "include" });
-  } catch {
-    /* ignore */
-  }
-}
+// 2026-11-16: the session calls (login / who am I / logout) moved to lib/auth.ts — the same
+// ones the account login uses. When sync points at the account server, it is ONE login:
+// the cookie is shared, so logging out of the account also ends this sync (see below).
 
 // ---------------------------------------------------------------- live sync (4 DBs)
 
@@ -234,7 +204,28 @@ export function stopSync(): void {
   handlers.forEach((h) => h.cancel());
   handlers.clear();
   perKind.clear();
+  syncBase = null;
   publish();
+}
+
+/** CouchDB address the running sync talks to (null = not running). */
+let syncBase: string | null = null;
+let authWatched = false;
+/** Account logged out (or its session ended) on the server this sync uses → stop, instead of retrying with 401s. */
+function watchAuth(): void {
+  if (authWatched) return;
+  authWatched = true;
+  let wasUser = getAuth().status === "user";
+  subscribeAuth(() => {
+    const a = getAuth();
+    const loggedOut = wasUser && a.status === "anon" && !a.offline;
+    wasUser = a.status === "user";
+    if (!loggedOut || !syncBase) return;
+    const running = syncBase;
+    void getAuthConfig().then((c) => {
+      if (syncBase === running && c.couchUrl === running) stopSync();
+    });
+  });
 }
 
 /** Starts two-way live sync of Songs, Bibles, PPT and Media with the user's CouchDB. */
@@ -248,6 +239,8 @@ export function startSync(s: CouchSettings): void {
     publish();
     return;
   }
+  syncBase = baseUrl(s);
+  watchAuth();
   const describe = (e: unknown): SyncStatus => {
     const status = (e as { status?: number })?.status;
     if (status === 401 || status === 403) return { state: "login", message: "Kailangang mag-login ulit sa CouchDB." };

@@ -32,6 +32,7 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Layout
 
+- `authServer.ts` — account routes (sign-up, config)
 - `server.ts` — Express: `/api/chat` (rate limited), `/api/health`, `/api/app/presence` (auto-stop)
 - `remoteServer.ts` — phone remote bridge over SSE, PIN login, host routes are localhost-only (`isLocal`)
 - `src/main.tsx` — picks the page by URL: `?output=main` projector, `?output=stage` Stage screen,
@@ -39,7 +40,7 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - `src/App.tsx` — shell, tabs (simulator / chat / guides / shortcuts), live state, appearance
 - `src/components/WorkflowCanvasSimulator.tsx` — the main operator screen (Library → Schedule → Live)
 - `src/lib/couchSync.ts` — the 4 PouchDB databases (songs, bibles, presentations, media), settings,
-  CouchDB session login (`POST /_session`, cookie, password never stored), live two-way sync
+  live two-way sync (session login itself lives in `src/lib/auth.ts`)
 - `src/components/CouchSyncPanel.tsx` — sync settings + login UI, shown in each Library tab
 - `src/lib/scheduleStore.ts` — schedule saved in local PouchDB `wtp-schedule` (not synced)
 - `src/lib/remoteLink.ts` — laptop ("host") side of the phone remote
@@ -55,21 +56,53 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - Theme uses the "Sanctuary" design tokens (`bg-canvas`, `text-fg`, `bg-accent`, `bg-live`, …) —
   no hard-coded colors.
 
-## Auth and subscriptions (in progress)
+## Auth and subscriptions
 
-Goal: login with CouchDB's built-in auth (`_users` + `/_session` cookie), designed so a
-subscription plan can be attached to each account later.
+Login is done (2026-11-16); nothing is locked behind a plan yet.
 
-Design rules agreed so far / proposed (update when confirmed):
+How it works:
 
-- A user can edit their own `_users` doc, except `roles` (admin only). So the plan must live in
-  **roles** (e.g. `plan:basic`, `plan:pro`), never in a field the user can write.
-- Roles come back in `GET /_session` (`userCtx.roles`), so the client reads the plan from there
-  and CouchDB itself can enforce it on cloud databases (`_security`).
-- Client-side gating is UX only. Real enforcement must be server-side.
-- Free features must keep working with no login and no internet.
+- `src/lib/auth.ts` — account state (`useAuth()`), `login` / `logout` / `signup`, plus the raw
+  CouchDB session calls (`couchSession`, `couchLogin`, `couchLogout`) that the sync panel shares.
+  The browser talks to CouchDB `/_session` directly (HttpOnly cookie; password never stored).
+- `authServer.ts` — `GET /api/auth/config` (which CouchDB, is sign-up available) and
+  `POST /api/auth/signup` (creates the `_users` doc with the admin login from `.env`:
+  `COUCHDB_URL`, `COUCHDB_ADMIN_USER`, `COUCHDB_ADMIN_PASSWORD`). Local-only on the laptop,
+  public behind a proxy, rate limited.
+- `src/lib/entitlements.ts` — `planFromRoles()` and `hasFeature(plan, feature)`. ALL feature
+  gates must go through `hasFeature`. The Basic/Pro feature split in there is a placeholder.
+- `src/components/AccountModal.tsx` + account button in `Header.tsx`.
+
+Decisions (confirmed by Jack 2026-11-16):
+
+- Login is optional. Free features must work with no account and no internet.
+- One account = one church; the login name is the email (lowercased).
+- The plan is a CouchDB **role** (`plan:basic`, `plan:pro`), never a doc field. Verified on
+  CouchDB 3.5: a normal user cannot read or write `_users` at all, and anonymous sign-up is
+  refused — hence the server route. `_admin` counts as Pro.
+- Roles come back in `GET /_session`, so CouchDB can enforce them on cloud DBs (`_security`).
+- Offline: last known name + roles are cached in localStorage (`wtp-auth-v1`) for 14 days.
+- Client-side gating is UX only; laptop-only features (remote, schedule) can only be soft-locked.
+- Account server == sync server → one cookie: account logout stops sync (`watchAuth` in couchSync.ts).
+
+Still open / next:
+
+- Which features go in Basic vs Pro, and what "lineup schedule" means as a paid feature (the
+  single working schedule must stay free — it is the only way to go live).
+- Add the actual gates (phone remote first), with an upgrade prompt.
+- PayMongo webhook → sets / removes the plan role (and expiry; roles alone have no end date).
+- Cloud: CouchDB must be same-site with the app (cross-site cookies are blocked); per-church
+  databases — a new account currently has no access to `wtp_*` databases (admin-only by default).
+- CouchDB session timeout is 10 min by default; README tells admins to raise it.
+
+## Testing notes
+
+- No test suite. In cloud sessions Docker works: start `dockerd`, run `couchdb:3` with
+  `COUCHDB_USER`/`COUCHDB_PASSWORD`, create `_users`, enable CORS for `http://localhost:3000`
+  with credentials, then drive the app with the pre-installed Playwright.
 
 ## Progress log
 
-- 2026-11-16: Project context saved. Reviewed the codebase and proposed the login plan
-  (awaiting Jack's answers before coding).
+- 2026-11-16: Project context saved; codebase reviewed; login plan agreed.
+- 2026-11-16: Login implemented and tested against a real CouchDB 3.5 (sign-up, login, logout,
+  expired session, offline grace, role change by admin, shared login with the sync panel).

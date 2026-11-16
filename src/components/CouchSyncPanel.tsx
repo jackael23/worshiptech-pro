@@ -3,6 +3,8 @@
  * 2026-11-03b: one login syncs Songs, Bibles and PPT (3 databases); also shown in the Bible/PPT tabs.
  * 2026-11-05: + Media (background pictures/videos, 4th database); also shown in the Media tab.
  * Login uses CouchDB's session cookie; the password is never stored by the app.
+ * 2026-11-16: same login as the account (lib/auth.ts). Already logged in on this CouchDB
+ *   (e.g. from the Account button) → sync turns on without typing the password again.
  */
 import React, { useEffect, useState } from "react";
 import { Database, LogIn, LogOut, X } from "lucide-react";
@@ -12,14 +14,13 @@ import {
   loadCouchSettings,
   saveCouchSettings,
   validateCouchSettings,
-  couchLogin,
-  couchLogout,
-  couchSessionUser,
+  couchBase,
   startSync,
   stopSync,
   subscribeSync,
   isSyncRunning,
 } from "../lib/couchSync";
+import { couchLogin, couchLogout, couchSession, refreshAuth, useAuth } from "../lib/auth";
 
 const STATE_LABEL: Record<SyncStatus["state"], string> = {
   off: "CouchDB: off",
@@ -48,7 +49,7 @@ export function autoStartCouchSync(): Promise<void> {
 async function doAutoStart(): Promise<void> {
   const s = loadCouchSettings();
   if (!s.enabled || isSyncRunning() || validateCouchSettings(s)) return;
-  const who = await couchSessionUser(s);
+  const who = await couchSession(couchBase(s));
   // Cookie expired: don't start (it would only retry with 401s). The panel then shows "kailangang mag-login".
   if (who.reachable && !who.name) return;
   startSync(s);
@@ -65,15 +66,17 @@ export const CouchSyncPanel: React.FC = () => {
 
   useEffect(() => subscribeSync(setStatus), []);
 
+  // Re-checked when the account logs in / out (it may be the same CouchDB, so the same cookie).
+  const account = useAuth();
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    couchSessionUser(settings).then((w) => alive && setUser(w.name));
+    couchSession(couchBase(settings)).then((w) => alive && setUser(w.name));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, account.name]);
 
   const shownState = settings.enabled && status.state === "off" ? "login" : status.state;
 
@@ -83,21 +86,36 @@ export const CouchSyncPanel: React.FC = () => {
     if (!settings.username.trim()) return setMsg("Ilagay ang CouchDB username.");
     setBusy(true);
     setMsg(null);
-    const r = await couchLogin(settings, password);
+    const r = await couchLogin(couchBase(settings), settings.username.trim(), password);
     setPassword("");
     setBusy(false);
     if (!r.ok) return setMsg(r.error || "Hindi naka-login.");
-    const next = { ...settings, username: settings.username.trim(), enabled: true };
+    void refreshAuth(); // the Account button follows (same cookie when this is the account server)
+    turnOn(settings.username.trim());
+    setMsg("Naka-login. Nagsisimula ang sync.");
+  };
+
+  const turnOn = (username: string) => {
+    const next = { ...settings, username, enabled: true };
     setSettings(next);
     saveCouchSettings(next);
-    setUser(next.username);
+    setUser(username);
     startSync(next);
-    setMsg("Naka-login. Nagsisimula ang sync.");
+  };
+
+  /** Already logged in on this CouchDB: no password needed. */
+  const connectAsCurrent = () => {
+    const err = validateCouchSettings(settings);
+    if (err) return setMsg(err);
+    if (!user) return;
+    turnOn(user);
+    setMsg("Nagsisimula ang sync.");
   };
 
   const disconnect = async () => {
     stopSync();
-    await couchLogout(settings);
+    await couchLogout(couchBase(settings));
+    void refreshAuth();
     const next = { ...settings, enabled: false };
     setSettings(next);
     saveCouchSettings(next);
@@ -157,7 +175,14 @@ export const CouchSyncPanel: React.FC = () => {
               <input className={inputCls} value={settings.mediaDbName} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, mediaDbName: e.target.value.trim() })} placeholder="wtp_media" />
             </label>
           </div>
-          {!settings.enabled || shownState === "login" ? (
+          {!settings.enabled && user ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-fg-muted">Naka-login: <strong className="text-fg">{user}</strong></span>
+              <button type="button" onClick={connectAsCurrent} className="btn btn-primary btn-sm" data-testid="couch-sync-on">
+                <Database className="w-3.5 h-3.5" /> I-on ang sync
+              </button>
+            </div>
+          ) : !settings.enabled || shownState === "login" ? (
             <>
               <label className="block">
                 <span className="text-fg-muted">Username</span>

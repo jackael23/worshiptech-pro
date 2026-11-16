@@ -54,6 +54,40 @@ Mga paalala:
 - Hindi gumagana sa Firebase (web.app) na version, dahil ang local server ang nagsisilbing tulay.
 - Sa `npm run dev`, may lalabas na "[vite] failed to connect to websocket" sa console ng phone. Hot reload lang ito ng Vite, walang epekto sa remote.
 
+## Account (login) at subscription plan
+
+Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync) — **sa ngayon wala pang naka-lock**; login pa lang ang nakalagay.
+
+- **Account button** (icon ng tao sa app bar): Login, Gumawa ng account, Logout, at kung anong plan.
+- Isang account = isang simbahan. Email ang login name.
+- Ang login ay CouchDB mismo (`_users` + session cookie). Hindi sine-save ang password.
+- Kapag hindi maabot ang CouchDB, ang huling alam na plan ang ginagamit (hanggang 14 na araw).
+- Kapag iisang CouchDB ang account at ang sync, iisa na rin ang login: sa CouchDB sync panel, **I-on ang sync** na lang (walang password ulit). Ang Logout sa Account ay nagpapatigil din ng sync.
+
+### Setup ng CouchDB (isang beses)
+
+1. Sa `.env` ng app (para sa "Gumawa ng account" — admin lang ang puwedeng magsulat sa `_users`):
+
+   ```
+   COUCHDB_URL="http://localhost:5984"
+   COUCHDB_ADMIN_USER="admin"
+   COUCHDB_ADMIN_PASSWORD="..."
+   ```
+
+   Kung wala ang admin user/password, Login lang ang lalabas (walang "Gumawa ng account").
+2. CORS sa CouchDB (Fauxton → Configuration → CORS, o sa `local.ini`): enable, origin `http://localhost:3000`, at `credentials = true`.
+3. Dapat may `_users` database (ginagawa ito ng Fauxton setup "single node").
+4. Inirerekomenda: habaan ang session. 10 minuto lang ang default ng CouchDB; nire-renew ito ng app habang nakabukas, pero pagkasara ng app nang lampas 10 minuto, login ulit. Sa `local.ini`:
+
+   ```
+   [chttpd_auth]
+   timeout = 2592000   ; 30 araw
+   ```
+
+### Pagbibigay ng plan (mano-mano muna, habang wala pang PayMongo)
+
+Ang plan ay **role** ng user: `plan:basic` o `plan:pro`. Admin lang ang makakapagpalit ng roles, kaya hindi ito mababago ng user mismo. Sa Fauxton: `_users` → buksan ang user → `"roles": ["plan:pro"]` → Save. Makikita ito ng app sa susunod na check (sa loob ng ilang minuto, o pag-reload).
+
 ## Icon / shortcut sa desktop at phone
 
 May sariling icon ang app (asul na monitor na may play), nasa `public/` (`icon.svg`, `favicon.ico`, PNG icons, `manifest.webmanifest`).
@@ -71,6 +105,7 @@ Nasa `bibles/` ang `.wtp-bible.json` files. I-import sa app: **Simulator → Bib
 
 - `POST /api/chat` — may rate limit (20 tanong / 10 min bawat IP), max 1,000 characters bawat tanong, huling 20 messages lang ng history ang ipinapadala sa Gemini.
 - `GET /api/health`
+- `GET /api/auth/config`, `POST /api/auth/signup` — account (tingnan ang `authServer.ts`): 10 subok / oras bawat IP; sa laptop lang tinatanggap ang signup maliban kung naka-deploy sa likod ng proxy.
 - `/api/remote/*` — phone remote (tingnan ang `remoteServer.ts`): PIN login (10 subok / 5 min bawat IP), ang laptop-side routes ay para sa localhost lang.
 
 ## Copyright

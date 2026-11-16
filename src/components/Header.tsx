@@ -8,8 +8,11 @@
  */
 import React, { useEffect, useState } from "react";
 import { EasyWorshipVersion, SupportedLanguage } from "../types";
-import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize } from "lucide-react";
+import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize, CircleUserRound } from "lucide-react";
 import { AppearancePanel } from "./AppearancePanel";
+import { AccountModal } from "./AccountModal";
+import { useAuth } from "../lib/auth";
+import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
 import type { Appearance } from "../lib/appearance";
 
 export type AppTab = "chat" | "simulator" | "guides" | "shortcuts";
@@ -81,6 +84,10 @@ const chevron = {
 export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, appearance, onAppearanceChange, status }) => {
   const [showAppearance, setShowAppearance] = useState(false);
   const fs = useFullscreen();
+  // 2026-11-16: account (optional login; the plan unlocks paid features — lib/auth.ts)
+  const [showAccount, setShowAccount] = useState(false);
+  const auth = useAuth();
+  const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-login o gumawa ng account";
   return (
     // 2026-11-15 (Sanctuary mockup): desktop app bar sits on the canvas (no bar color), controls are grouped boxes
     <header className="relative z-50 shrink-0 border-b border-line bg-surface lg:border-transparent lg:bg-transparent">
@@ -179,9 +186,21 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
           >
             <Palette className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => setShowAccount(true)}
+            className="btn btn-ghost btn-icon tap-target relative lg:border-line"
+            title={accountTitle}
+            aria-label={accountTitle}
+            data-testid="account-button"
+          >
+            <CircleUserRound className="h-4 w-4" />
+            {auth.status === "user" && <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ${auth.offline ? "bg-warn" : "bg-ok"}`} aria-hidden />}
+          </button>
         </div>
       </div>
       {showAppearance && <AppearancePanel value={appearance} onChange={onAppearanceChange} onClose={() => setShowAppearance(false)} />}
+      {showAccount && <AccountModal auth={auth} onClose={() => setShowAccount(false)} />}
     </header>
   );
 };
