@@ -509,7 +509,17 @@
    show when it is selected, hovered or focused; other rows show their slide count instead.
    Touch-only screens (no hover) keep the buttons always visible. Plain CSS because .icon-btn-group is unlayered. */
 .sched-meta { display: none; }
+/* 2026-11-16 (b): key tile of a Library song row — a soft tint per key letter (--key-hue), readable in light and dark */
+.key-tile {
+  background: hsl(var(--key-hue) 55% 55% / 0.16);
+  border-color: hsl(var(--key-hue) 55% 55% / 0.3);
+  color: color-mix(in srgb, hsl(var(--key-hue) 70% 55%) 50%, var(--c-fg));
+}
 @media (min-width: 1024px) and (hover: hover) {
+  /* Library song rows: Edit / Delete / SongSelect are quiet until the row is hovered or focused */
+  .song-row .row-actions-quiet { display: none; }
+  .song-row:hover .row-actions-quiet,
+  .song-row:focus-within .row-actions-quiet { display: inline-flex; }
   .sched-row .sched-actions-quiet { display: none; }
   .sched-row:hover .sched-actions-quiet,
   .sched-row:focus-within .sched-actions-quiet { display: inline-flex; }

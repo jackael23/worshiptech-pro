@@ -7,8 +7,10 @@
  * 2026-11-03: My Songs are saved in PouchDB (browser) + optional CouchDB sync (songsDb.ts).
  * 2026-11-06: Bulk Add (one big paste, "---" between songs) + Import folder, both with a preview first.
  * 2026-11-06 (b): a My Song can have its own background; Add / double-click puts it on the schedule item.
+ * 2026-11-16 (b): one mixed A–Z list (hymns + My Songs), no filter chips; titles without lyrics sit at the end.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon, Presentation } from "lucide-react";
 import { SongItem } from "../types";
 import { SAMPLE_SONGS, REFERENCE_SONGS, SONGSELECT_SEARCH_URL } from "../data/easyworshipData";
@@ -33,8 +35,6 @@ import { resolveSongBackground } from "../lib/songBackground";
 import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
 import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
-type SongFilter = "all" | "sample" | "user" | "reference";
-
 interface SongLibraryProps {
   searchQuery: string;
   onAddToSchedule: (song: SongItem) => void;
@@ -42,7 +42,27 @@ interface SongLibraryProps {
   onLiveSong?: (song: SongItem) => void;
   /** 2026-11-16: the Library card's "+ New song" button (desktop) — a new number opens the editor. */
   newSongTick?: number;
+  /** 2026-11-16 (b): on desktop the Import / Bulk Add / … links are drawn here (the bottom of the Library card). */
+  footerSlot?: HTMLElement | null;
 }
+
+const DESKTOP_MQ = "(min-width: 1024px)";
+const useIsDesktop = () => {
+  const [desktop, setDesktop] = useState(() => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(DESKTOP_MQ).matches);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(DESKTOP_MQ);
+    const on = () => setDesktop(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return desktop;
+};
+
+// 2026-11-16 (b): the key tile gets a tint per key letter (same key = same color), like the mockup's colored tiles
+const KEY_HUES: Record<string, number> = { A: 265, B: 340, C: 190, D: 24, E: 100, F: 40, G: 215 };
+const keyHue = (key?: string) => KEY_HUES[(key || "").trim().charAt(0).toUpperCase()];
+const byTitle = (a: SongItem, b: SongItem) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
 
 // 2026-11-16: last "+ New song" click already handled (kept outside the component: the Songs tab remounts)
 let handledNewSongTick = 0;
@@ -50,19 +70,12 @@ let handledNewSongTick = 0;
 const quietBtn =
   "tap-target inline-flex items-center gap-1 rounded-md px-1.5 py-1.5 lg:py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed shrink-0";
 
-const FILTERS: { id: SongFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "sample", label: "Hymns" },
-  { id: "user", label: "My Songs" },
-  { id: "reference", label: "Reference" },
-];
-
 // 2026-10-29: lg:py-1 — shorter rows on desktop (phones keep 44px tap targets via .tap-target)
 const smallBtn =
   "tap-target px-2.5 py-1.5 lg:py-1 rounded-md text-xs font-semibold border transition-all flex items-center gap-1 shrink-0";
 
-export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSchedule, onLiveSong, newSongTick = 0 }) => {
-  const [filter, setFilter] = useState<SongFilter>("all");
+export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSchedule, onLiveSong, newSongTick = 0, footerSlot }) => {
+  const isDesktop = useIsDesktop();
   const [mySongs, setMySongs] = useState<StoredSong[]>([]);
   const [storageOk, setStorageOk] = useState(true);
   const [editor, setEditor] = useState<{ mode: "new" | "edit"; id?: string; initial?: Partial<SongDraft> } | null>(null);
@@ -149,7 +162,6 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       }
       persist([...mySongs, { id: newSongId(), ...draft, createdAt: now, updatedAt: now }]);
       setNotice({ text: `Naidagdag ang "${draft.title}" sa My Songs.`, tone: "ok" });
-      setFilter((f) => (f === "reference" || f === "sample" ? "user" : f));
     }
     setEditor(null);
   };
@@ -250,7 +262,6 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       const r = upsertSongs(mySongsRef.current, drafts);
       if (r.added || r.updated) {
         persist(r.songs);
-        setFilter("user");
       }
       const skipped = r.skipped + errors.length;
       setNotice({
@@ -275,7 +286,6 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       return;
     }
     persist(result.songs);
-    setFilter("user");
     setNotice({
       text: `Import: ${result.added} bago, ${result.updated} na-update${result.skipped ? `, ${result.skipped} nilaktawan` : ""}.`,
       tone: result.skipped ? "warn" : "ok",
@@ -298,7 +308,6 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     const r = upsertSongs(mySongsRef.current, drafts);
     if (r.added || r.updated) {
       persist(r.songs);
-      setFilter("user");
     }
     setNotice({
       text: `Bulk Add: ${r.added} bago, ${r.updated} na-update${r.skipped ? `, ${r.skipped} hindi na-save` : ""}.`,
@@ -366,32 +375,13 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     !q || s.title.toLowerCase().includes(q) || (s.author || "").toLowerCase().includes(q);
 
   const myItems = useMemo(() => mySongs.map(toSongItem), [mySongs]);
-  const rows: SongItem[] = [
-    ...(filter === "all" || filter === "user" ? myItems : []),
-    ...(filter === "all" || filter === "sample" ? SAMPLE_SONGS : []),
-    ...(filter === "all" || filter === "reference" ? REFERENCE_SONGS : []),
-  ].filter(matches);
+  // 2026-11-16 (b): hymns and My Songs mixed A–Z; the titles without lyrics (reference) come after them
+  const songRows = [...myItems, ...SAMPLE_SONGS].filter(matches).sort(byTitle);
+  const rows: SongItem[] = [...songRows, ...REFERENCE_SONGS.filter(matches).sort(byTitle)];
 
-  return (
-    <div className="space-y-2">
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-1.5">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={`tap-target px-3 py-1 rounded-md text-xs border transition-all ${
-              filter === f.id ? "bg-accent-soft text-accent-text border-transparent font-semibold" : "bg-transparent text-fg-muted border-line hover:bg-surface-3 font-medium"
-            }`}
-          >
-            {f.label}
-            {f.id === "user" && mySongs.length > 0 ? ` (${mySongs.length})` : ""}
-          </button>
-        ))}
-      </div>
-
-      {/* My Songs toolbar — 2026-11-16: quiet links (New Song sits in the Library card header on desktop) */}
-      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 lg:-mx-1.5">
+  // My Songs toolbar — quiet links. Phones: above the list. Desktop: the bottom of the Library card (footerSlot).
+  const tools = (
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 lg:-mx-1.5" data-testid="song-tools">
         <button onClick={() => setEditor({ mode: "new" })} className={`${smallBtn} mr-1 bg-accent hover:bg-accent-hover text-on-accent border-accent lg:hidden`}>
           <FilePlus2 className="w-3.5 h-3.5" />
           New Song
@@ -429,6 +419,11 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
           data-testid="folder-input"
         />
       </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {isDesktop && footerSlot ? createPortal(tools, footerSlot) : tools}
 
       <CouchSyncPanel />
 
@@ -444,58 +439,54 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         </p>
       )}
 
-      {filter === "user" && mySongs.length === 0 && (
-        <p className="text-xs text-fg-subtle bg-surface-2 border border-dashed border-line-strong rounded-lg p-3">
-          Wala pang sariling kanta. I-click ang <strong>New Song</strong>, <strong>Bulk Add</strong> (maraming kanta sa isang paste), <strong>Folder</strong>, o <strong>Import</strong> ng backup file o ng mga file na na-download sa CCLI SongSelect (.txt, .usr, ChordPro). Puwede ring pumili sa <strong>Reference</strong> at i-click ang "Add lyrics".
-        </p>
-      )}
-      {rows.length === 0 && !(filter === "user" && mySongs.length === 0) && (
-        <p className="text-xs text-fg-subtle p-2">Walang tugma sa "{searchQuery}".</p>
-      )}
+      {rows.length === 0 && <p className="text-xs text-fg-subtle p-2">Walang tugma sa "{searchQuery}".</p>}
 
       {/* Song rows */}
-      {rows.map((song) => {
+      {rows.map((song, idx) => {
         const isUser = song.source === "user";
         const isRef = song.source === "reference";
+        const hue = isRef ? undefined : keyHue(song.key);
         return (
+          <React.Fragment key={song.id}>
+          {isRef && idx === songRows.length && <div className="eyebrow px-2.5 pb-0.5 pt-3 tracking-[0.14em]">Wala pang lyrics</div>}
           <div
-            key={song.id}
             onDoubleClick={(e) => {
               // ignore double-clicks on the row's own buttons/links
               if (isRef || !onLiveSong || (e.target as HTMLElement).closest("button, a")) return;
               void withBackground(song).then(onLiveSong);
             }}
             title={isRef ? undefined : "Double-click = Add + LIVE"}
-            className={`hover:bg-surface-2 rounded-lg p-2 transition-colors text-xs group ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
+            className={`song-row mb-0.5 hover:bg-surface-2 rounded-lg p-2.5 transition-colors text-xs group ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
           >
             <div className="flex items-center justify-between gap-3">
               {/* 2026-11-15 (Sanctuary): key tile, like the mockup (— = no key / reference) */}
               <span
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border font-display text-sm font-medium ${
-                  isRef ? "border-line bg-surface-3 text-fg-subtle" : "border-accent/25 bg-accent-soft text-accent-text"
+                className={`grid h-9.5 w-9.5 shrink-0 place-items-center rounded-md border font-display text-[15px] font-medium ${
+                  isRef ? "border-dashed border-line-strong text-fg-subtle" : hue !== undefined ? "key-tile" : "border-accent/25 bg-accent-soft text-accent-text"
                 }`}
+                style={hue !== undefined ? ({ "--key-hue": hue } as React.CSSProperties) : undefined}
                 aria-hidden
               >
                 {isRef ? "—" : song.key || "♪"}
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-fg truncate flex items-center gap-1.5">
+                <div className={`text-sm font-semibold truncate flex items-center gap-1.5 ${isRef ? "text-fg-muted" : "text-fg"}`}>
                   <span className="truncate">{song.title}</span>
                   {isUser && <span className="shrink-0 px-1.5 rounded bg-accent-soft text-accent-text border border-accent/30 text-xs font-medium">My Song</span>}
                   {isUser && song.bgId && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-accent-text" aria-label="May sariling background" />}
                 </div>
-                <div className="text-xs text-fg-subtle flex items-center gap-2 mt-0.5 min-w-0">
+                <div className="text-xs text-fg-subtle flex items-center gap-1 mt-0.5 min-w-0">
                   {isRef ? (
-                    // 2026-10-29: "Reference" badge moved here from the title line, so long titles aren't cut short
-                    <>
-                      <span className="truncate">Reference · walang lyrics</span>
-                    </>
+                    <span className="truncate">{song.author || "Reference"}</span>
                   ) : (
-                    // 2026-11-16: "4 slides · Author" (the key is already on the tile; slides first so a long author can't push it out)
-                    <span className="truncate">
-                      {song.slides.length} slides
-                      {song.author ? ` · ${song.author}` : ""}
-                    </span>
+                    // 2026-11-16 (b): "Author · 4 slides" like the mockup (only the author is cut short when it is long)
+                    <>
+                      {song.author && <span className="truncate">{song.author}</span>}
+                      <span className="shrink-0 whitespace-nowrap">
+                        {song.author ? "· " : ""}
+                        {song.slides.length} {song.slides.length === 1 ? "slide" : "slides"}
+                      </span>
+                    </>
                   )}
                 </div>
               </div>
@@ -507,7 +498,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                       href={`${SONGSELECT_SEARCH_URL}${encodeURIComponent(song.title)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="icon-btn"
+                      className="icon-btn row-actions-quiet"
                       title="Hanapin sa CCLI SongSelect (kailangan ng account)"
                       aria-label={`Hanapin ang ${song.title} sa SongSelect`}
                     >
@@ -527,7 +518,8 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                 ) : (
                   <>
                     {isUser && confirmDeleteId !== song.id && (
-                      <>
+                      // 2026-11-16 (b): quiet rows — Edit / Delete show on hover or focus on a mouse-driven desktop (phones: always)
+                      <span className="row-actions-quiet inline-flex items-center gap-1">
                         <button
                           onClick={() => {
                             const s = mySongs.find((m) => m.id === song.id);
@@ -547,7 +539,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                         >
                           <Trash2 />
                         </button>
-                      </>
+                      </span>
                     )}
                     {isUser && confirmDeleteId === song.id ? (
                       <>
@@ -573,6 +565,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
               </div>
             </div>
           </div>
+          </React.Fragment>
         );
       })}
 

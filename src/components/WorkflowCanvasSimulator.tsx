@@ -295,6 +295,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   const [customAlertInput, setCustomAlertInput] = useState("Nursery: Parent #104 please come to Nursery");
   // 2026-11-16: "+ New song" in the Library card header → opens the editor inside SongLibrary
   const [newSongTick, setNewSongTick] = useState(0);
+  // 2026-11-16 (b): bottom strip of the Library card — SongLibrary draws its Import / Bulk Add / … links here on desktop
+  const [libFooterEl, setLibFooterEl] = useState<HTMLDivElement | null>(null);
   const [simulatedTime, setSimulatedTime] = useState("");
   // 2026-11-15 (Mira): Stage announcement (musicians only) — draft text, blink switch (remembered),
   // and the Stage window's transpose / size / chords (same browser storage) for the "Stage monitor" preview
@@ -1117,9 +1119,9 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 lg:px-5 lg:pb-5">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 lg:px-5 lg:pb-3">
             {/* Songs — samples, My Songs, reference (2026-10-20) */}
-            {activeMediaTab === "songs" && <SongLibrary searchQuery={searchQuery} onAddToSchedule={handleAddSongToSchedule} onLiveSong={handleLiveSong} newSongTick={newSongTick} />}
+            {activeMediaTab === "songs" && <SongLibrary searchQuery={searchQuery} onAddToSchedule={handleAddSongToSchedule} onLiveSong={handleLiveSong} newSongTick={newSongTick} footerSlot={libFooterEl} />}
 
             {/* Scripture — samples + imported full Bibles (2026-10-20) */}
             {activeMediaTab === "scriptures" && <BibleLibrary searchQuery={searchQuery} onAddPassage={handleAddPassage} onLivePassage={handleLivePassage} />}
@@ -1140,6 +1142,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               />
             )}
           </div>
+          <div ref={setLibFooterEl} className="hidden shrink-0 px-5 pb-4 pt-1 empty:hidden lg:block" data-testid="library-footer" />
         </section>
 
         {/* ---------- PANEL 2: SCHEDULE + SLIDES ---------- */}
