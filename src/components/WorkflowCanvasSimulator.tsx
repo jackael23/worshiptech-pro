@@ -1664,9 +1664,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                       </p>
                       <p>Kontrolin ang Live, schedule, Bible at alerts mula sa phone sa parehong WiFi. Libre pa rin ang songs, Bible at projection.</p>
                       {auth.status === "user" ? (
-                        <p className="notice-warn">
-                          Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>. Wala pang online na bayad sa app — kapag na-upgrade na ang account, kusa itong mabubuksan dito.
-                        </p>
+                        <>
+                          <p className="notice-warn">Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>.</p>
+                          <button onClick={openAccount} className="btn btn-primary btn-sm" data-testid="remote-locked-plans">
+                            Tingnan ang plans
+                          </button>
+                        </>
                       ) : (
                         <button onClick={openAccount} className="btn btn-primary btn-sm" data-testid="remote-locked-login">
                           Mag-login o gumawa ng account

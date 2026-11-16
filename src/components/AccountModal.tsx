@@ -6,9 +6,12 @@ import React, { useEffect, useState } from "react";
 import { LogIn, LogOut, UserPlus, WifiOff, X } from "lucide-react";
 import { AuthState, PASSWORD_MIN, getAuthConfig, login, logout, signup } from "../lib/auth";
 import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
+import { PlanSection } from "./PlanSection";
 
 interface Props {
   auth: AuthState;
+  /** 2026-11-16: opened by PayMongo's link back to the app (?billing=success / cancel). */
+  returned?: "success" | "cancel" | null;
   onClose: () => void;
 }
 
@@ -16,7 +19,7 @@ const inputCls =
   "w-full bg-canvas text-fg placeholder:text-fg-subtle px-3 py-2 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
 const labelCls = "text-xs font-semibold text-fg";
 
-export const AccountModal: React.FC<Props> = ({ auth, onClose }) => {
+export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }) => {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [canSignup, setCanSignup] = useState(false);
   const [church, setChurch] = useState("");
@@ -68,7 +71,7 @@ export const AccountModal: React.FC<Props> = ({ auth, onClose }) => {
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Account">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative bg-surface w-full sm:max-w-sm flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line" data-testid="account-modal">
+      <div className="relative bg-surface w-full sm:max-w-sm max-h-[92dvh] overflow-y-auto flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line" data-testid="account-modal">
         <div className="flex items-center justify-between px-4 py-3 border-b border-line">
           <h3 className="text-base font-bold text-fg">Account</h3>
           <button type="button" onClick={onClose} className="p-2 -mr-2 rounded-lg text-fg-subtle hover:bg-surface-3" aria-label="Isara">
@@ -86,6 +89,7 @@ export const AccountModal: React.FC<Props> = ({ auth, onClose }) => {
               <span className="text-xs text-fg-muted">Plan</span>
               <span className="text-sm font-semibold text-fg" data-testid="account-plan">{PLAN_LABEL[plan]}</span>
             </div>
+            {!auth.offline && <PlanSection plan={plan} returned={returned} />}
             {auth.offline && (
               <p className="notice-warn text-xs flex gap-1.5">
                 <WifiOff className="w-4 h-4 shrink-0" />

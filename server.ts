@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { HOTKEYS_TEXT, HOTKEYS_VERIFIED_FOR } from "./src/data/easyworshipData";
 import { isLocal, registerRemoteRoutes } from "./remoteServer";
 import { registerAuthRoutes } from "./authServer";
+import { registerBillingRoutes } from "./billingServer";
 
 dotenv.config();
 
@@ -135,6 +136,8 @@ async function startServer() {
   // because the laptop's snapshot (with small slide pictures) can be bigger.
   registerRemoteRoutes(app, PORT);
   registerAutoStop(app);
+  // 2026-11-16: PayMongo subscriptions — before the JSON parser (the webhook needs the raw body)
+  registerBillingRoutes(app);
   app.use(express.json({ limit: LIMITS.BODY_MAX }));
   // 2026-11-16: accounts (sign-up + which CouchDB holds them) — see authServer.ts
   registerAuthRoutes(app);

@@ -87,7 +87,31 @@ Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account
    timeout = 2592000   ; 30 araw
    ```
 
-### Pagbibigay ng plan (mano-mano muna, habang wala pang PayMongo)
+### Online na bayad (PayMongo)
+
+Prepaid: bumibili ang simbahan ng **1 buwan (₱299)** o **1 taon (₱2,990, 2 buwan libre)** ng Basic. Walang kusang sinisingil ulit. Hindi pa ibinebenta ang Pro (hinihintay ang cloud sync). Ang presyo ay nasa itaas ng `billingServer.ts`.
+
+Paano gumagana: Account → pindutin ang presyo → bubukas ang bayaran ng PayMongo sa bagong tab → pagkabayad, lalagyan ng server ang account ng role na `plan:basic` at ng petsa ng katapusan. Kapag lumampas ang petsa (+3 araw na palugit), kusang tinatanggal ang plan. Ang bayad nang maaga ay idinadagdag sa natitirang panahon.
+
+**Kailangan nito ng server na naaabot ng PayMongo** (naka-host, hindi ang laptop ng simbahan). Setup:
+
+1. Sa `.env` ng naka-host na server:
+
+   ```
+   PAYMONGO_SECRET_KEY="sk_test_..."        # sk_live_... kapag totoo na
+   PAYMONGO_WEBHOOK_SECRET="whsk_..."       # galing sa step 2
+   APP_URL="https://ang-site-mo"            # dito ibinabalik ang tao pagkabayad
+   # PAYMONGO_METHODS="gcash,card"          # mga paraang naka-enable sa PayMongo account mo
+   ```
+
+   Kasama ang `COUCHDB_ADMIN_USER` / `COUCHDB_ADMIN_PASSWORD` (pareho sa "Gumawa ng account").
+2. Sa PayMongo Dashboard → Developers → Webhooks: gumawa ng webhook sa `https://ang-site-mo/api/billing/webhook` para sa event na `checkout_session.payment.paid`, at kopyahin ang secret nito sa `PAYMONGO_WEBHOOK_SECRET`.
+3. Dapat iisang cookie ang app at ang CouchDB (parehong site; sa CouchDB, itakda ang `cookie_domain`), dahil sa session cookie nakikilala ng server kung sinong account ang nagbabayad.
+4. Sa laptop ng simbahan (walang PayMongo key): ilagay ang `BILLING_URL="https://ang-site-mo"` para may button na "Mag-subscribe o mag-renew online" sa Account.
+
+**Subukan muna gamit ang test keys bago mag-live.** Ang code ay nasubukan laban sa kunwaring PayMongo server, hindi pa sa totoong PayMongo. Kung tinatanggihan ang totoong webhook ("bad signature" sa log ng server), alisin muna ang `PAYMONGO_WEBHOOK_SECRET`: ligtas pa rin, dahil bawat bayad ay kinukumpirma ng server sa PayMongo API mismo bago magbigay ng plan.
+
+### Pagbibigay ng plan nang mano-mano
 
 Ang plan ay **role** ng user: `plan:basic` o `plan:pro`. Admin lang ang makakapagpalit ng roles, kaya hindi ito mababago ng user mismo. Sa Fauxton: `_users` → buksan ang user → `"roles": ["plan:pro"]` → Save. Makikita ito ng app sa susunod na check (sa loob ng ilang minuto, o pag-reload).
 
@@ -109,6 +133,7 @@ Nasa `bibles/` ang `.wtp-bible.json` files. I-import sa app: **Simulator → Bib
 - `POST /api/chat` — may rate limit (20 tanong / 10 min bawat IP), max 1,000 characters bawat tanong, huling 20 messages lang ng history ang ipinapadala sa Gemini.
 - `GET /api/health`
 - `GET /api/auth/config`, `POST /api/auth/signup` — account (tingnan ang `authServer.ts`): 10 subok / oras bawat IP; sa laptop lang tinatanggap ang signup maliban kung naka-deploy sa likod ng proxy.
+- `/api/billing/*` — PayMongo (tingnan ang `billingServer.ts`): `plans`, `status`, `checkout`, `confirm`, `webhook`.
 - `/api/remote/*` — phone remote (tingnan ang `remoteServer.ts`): PIN login (10 subok / 5 min bawat IP), ang laptop-side routes ay para sa localhost lang.
 
 ## Copyright

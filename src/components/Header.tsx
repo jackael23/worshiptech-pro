@@ -15,6 +15,23 @@ import { onOpenAccount, useAuth } from "../lib/auth";
 import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
 import type { Appearance } from "../lib/appearance";
 
+// 2026-11-16: back from PayMongo's checkout page (?billing=success|cancel), or a link straight to
+// the Account window (?account): open it, and clean the address so a reload does not repeat it.
+// Read once when the file loads (not in a component: React runs those twice in development).
+const START = (() => {
+  const q = new URLSearchParams(window.location.search);
+  const b = q.get("billing");
+  const returned: "success" | "cancel" | null = b === "success" || b === "cancel" ? b : null;
+  const openAccount = !!returned || q.has("account");
+  if (openAccount) {
+    q.delete("billing");
+    q.delete("account");
+    const rest = q.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+  }
+  return { returned, openAccount };
+})();
+
 export type AppTab = "chat" | "simulator" | "guides" | "shortcuts";
 export type Theme = "dark" | "light";
 
@@ -85,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
   const [showAppearance, setShowAppearance] = useState(false);
   const fs = useFullscreen();
   // 2026-11-16: account (optional login; the plan unlocks paid features — lib/auth.ts)
-  const [showAccount, setShowAccount] = useState(false);
+  const [showAccount, setShowAccount] = useState(START.openAccount);
   const auth = useAuth();
   useEffect(() => onOpenAccount(() => setShowAccount(true)), []);
   const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-login o gumawa ng account";
@@ -201,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
         </div>
       </div>
       {showAppearance && <AppearancePanel value={appearance} onChange={onAppearanceChange} onClose={() => setShowAppearance(false)} />}
-      {showAccount && <AccountModal auth={auth} onClose={() => setShowAccount(false)} />}
+      {showAccount && <AccountModal auth={auth} returned={START.returned} onClose={() => setShowAccount(false)} />}
     </header>
   );
 };

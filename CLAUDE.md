@@ -33,6 +33,7 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 ## Layout
 
 - `authServer.ts` — account routes (sign-up, config)
+- `billingServer.ts` — PayMongo: checkout, webhook, confirm, hourly expiry sweep
 - `server.ts` — Express: `/api/chat` (rate limited), `/api/health`, `/api/app/presence` (auto-stop)
 - `remoteServer.ts` — phone remote bridge over SSE, PIN login, host routes are localhost-only (`isLocal`)
 - `src/main.tsx` — picks the page by URL: `?output=main` projector, `?output=stage` Stage screen,
@@ -91,6 +92,14 @@ Decisions (confirmed by Jack 2026-11-16):
   opened from the Schedule header. A lineup = named, dated copy of the working Schedule (same
   attachment format as `scheduleStore.ts`). Opening one replaces the working Schedule
   (`openLineup` in the Simulator). Locked with `hasFeature(plan, "schedule")`.
+- Payments (`billingServer.ts`, `src/lib/billing.ts`, `src/components/PlanSection.tsx`): PREPAID
+  1 month / 1 year via PayMongo Checkout Sessions (GCash cannot auto-renew). Order doc in
+  CouchDB `wtp_billing`; on webhook/confirm the session is RE-FETCHED from PayMongo's API and
+  only that answer is trusted; then `_users` doc gets `plan:<plan>` + `subscription.expiresAt`
+  (+ `orders` list = idempotency). Hourly sweep removes ended plans (3-day grace). Roles set by
+  hand (no `subscription`) are never touched. Routes identify the account by forwarding the
+  `AuthSession` cookie to CouchDB. Prices live at the top of `billingServer.ts`
+  (Basic ₱299/mo, ₱2,990/yr; Pro ₱699 listed but `available: false` until cloud sync).
 - Account server == sync server → one cookie: account logout stops sync (`watchAuth` in couchSync.ts).
 
 Still open / next:
@@ -99,7 +108,13 @@ Still open / next:
 - Tiers: Jack has not decided. Proposed (in `entitlements.ts`): Basic = phone remote + saved
   lineups (laptop-only features); Pro = Basic + cloud sync (the part with a monthly server cost).
 - Lineups in cloud sync (today they live only in the laptop's browser, PouchDB `wtp-lineups`).
-- PayMongo webhook → sets / removes the plan role (and expiry; roles alone have no end date).
+- PayMongo is NOT yet tested against the real API: this cloud session's network blocks
+  paymongo.com (Jack declined a new environment that allows it), so the request shape and the
+  `Paymongo-Signature` format (`t=,te=,li=`; HMAC-SHA256 of `<t>.<raw body>`) come from memory and
+  search results. Tested against a stand-in server only. First step with real test keys:
+  create a checkout, pay in test mode, read the server log.
+- Hosting decision (where the public server + cloud CouchDB run) is still Jack's to make.
+- Offline cache (14 days) can outlive a plan's end date by up to 14 days; fine for a soft lock.
 - Cloud: CouchDB must be same-site with the app (cross-site cookies are blocked); per-church
   databases — a new account currently has no access to `wtp_*` databases (admin-only by default).
 - CouchDB session timeout is 10 min by default; README tells admins to raise it.
@@ -116,4 +131,5 @@ Still open / next:
 - 2026-11-16: Login implemented and tested against a real CouchDB 3.5 (sign-up, login, logout,
   expired session, offline grace, role change by admin, shared login with the sync panel).
 - 2026-11-16: Phone remote locked to Basic / Pro; tested anonymous, Free, Basic, offline, logout.
+- 2026-11-16: PayMongo prepaid billing built (checkout, webhook, confirm, expiry); stand-in tests only.
 - 2026-11-16: Lineups built and locked to Basic / Pro; tested save, open, overwrite, delete, reload.

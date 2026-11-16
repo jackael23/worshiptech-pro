@@ -113,9 +113,20 @@ export const LineupsModal: React.FC<Props> = ({ allowed, auth, items, isLive, on
             </p>
             <p>I-save ang Schedule bawat service (hal. bawat Linggo), ihanda nang maaga ang susunod, at buksan ulit ang mga dati. Libre pa rin ang kasalukuyang Schedule.</p>
             {auth.status === "user" ? (
-              <p className="notice-warn text-xs">
-                Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>. Wala pang online na bayad sa app — kapag na-upgrade na ang account, kusa itong mabubuksan dito.
-              </p>
+              <>
+                <p className="notice-warn text-xs">Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    openAccount();
+                  }}
+                  className="btn btn-primary btn-sm"
+                  data-testid="lineups-locked-plans"
+                >
+                  Tingnan ang plans
+                </button>
+              </>
             ) : (
               <button
                 type="button"
