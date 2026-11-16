@@ -58,8 +58,8 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Auth and subscriptions
 
-Login is done and the phone remote is locked behind Basic / Pro (2026-11-16). Saved lineups
-and cloud sync are not locked yet (they do not exist as paid features yet).
+Login is done; the phone remote and saved Lineups are locked behind Basic / Pro (2026-11-16).
+Cloud sync is not locked yet (the hosted version does not exist yet).
 
 How it works:
 
@@ -87,6 +87,10 @@ Decisions (confirmed by Jack 2026-11-16):
 - Phone remote lock: `useRemoteHost(onCmd, allowed)` in `remoteLink.ts` — when the plan has no
   "remote", the laptop tab never connects to the bridge (phones see "laptop not connected") and
   the Phone remote panel shows the upgrade / login prompt. Soft lock (client-side).
+- Lineups ("lineup schedule"): `src/lib/lineupStore.ts` + `src/components/LineupsModal.tsx`,
+  opened from the Schedule header. A lineup = named, dated copy of the working Schedule (same
+  attachment format as `scheduleStore.ts`). Opening one replaces the working Schedule
+  (`openLineup` in the Simulator). Locked with `hasFeature(plan, "schedule")`.
 - Account server == sync server → one cookie: account logout stops sync (`watchAuth` in couchSync.ts).
 
 Still open / next:
@@ -94,8 +98,7 @@ Still open / next:
 - The single working Schedule must stay free — it is the only way to go live.
 - Tiers: Jack has not decided. Proposed (in `entitlements.ts`): Basic = phone remote + saved
   lineups (laptop-only features); Pro = Basic + cloud sync (the part with a monthly server cost).
-- "Lineup schedule" as a paid feature = saving several lineups / planning future services
-  (to be built). Lock it with `hasFeature(plan, "schedule")`.
+- Lineups in cloud sync (today they live only in the laptop's browser, PouchDB `wtp-lineups`).
 - PayMongo webhook → sets / removes the plan role (and expiry; roles alone have no end date).
 - Cloud: CouchDB must be same-site with the app (cross-site cookies are blocked); per-church
   databases — a new account currently has no access to `wtp_*` databases (admin-only by default).
@@ -113,3 +116,4 @@ Still open / next:
 - 2026-11-16: Login implemented and tested against a real CouchDB 3.5 (sign-up, login, logout,
   expired session, offline grace, role change by admin, shared login with the sync panel).
 - 2026-11-16: Phone remote locked to Basic / Pro; tested anonymous, Free, Basic, offline, logout.
+- 2026-11-16: Lineups built and locked to Basic / Pro; tested save, open, overwrite, delete, reload.

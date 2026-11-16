@@ -8,6 +8,7 @@ AI assistant at practice simulator para sa mga church media volunteer na gumagam
 - **Simulator** — practice ng Library → Schedule → LIVE gamit ang totoong EW7 hotkeys (Page Down = Go Live, Ctrl+B = Black, Ctrl+C = Text, Ctrl+L = Logo). Double-click sa slide, schedule item, kanta o verse = LIVE agad.
   - **Songs:** public-domain hymns; **My Songs** (sariling lyrics, naka-save lang sa browser); import ng SongSelect `.txt` / `.usr` / `.bin` at ChordPro; export/import ng backup `.json`; Reference list (title/artist lang, walang lyrics).
   - **Bibles:** sample verses (Ang Biblia, KJV, MBB maikling sipi) + **Import Bible** ng buong Bible mula sa `bibles/` (Ang Dating Biblia 1905, KJV — public domain). Browse aklat → kabanata → verses, o i-search ang reference (hal. `Juan 3:16`, `Awit 23`, `1 Cor 13:4-7`).
+- **Lineups** *(Basic / Pro)* — Simulator → Schedule → **Lineups**: i-save ang Schedule na may pangalan at petsa ng service (hal. bawat Linggo), ihanda nang maaga ang susunod, at buksan ulit ang mga dati. **Buksan** = papalitan ang kasalukuyang Schedule; **I-save dito** = palitan ang laman ng naka-save. Naka-save sa browser ng laptop (hindi pa kasama sa CouchDB sync). Libre pa rin ang kasalukuyang Schedule.
 - **Text style** — Simulator → Output → Text style: font, size (50–150%, auto-fit pa rin), Bold/Italic, kulay, alignment, outline/shadow. Global (naka-save sa browser) o sariling style bawat schedule item. Lumalabas agad sa Live, projector at phone.
 - **Stage screen (musicians)** — Simulator → Output → **Open Stage screen**: lyrics na may chords, key, next slide at orasan sa TV / second monitor ng musicians. Sa Live panel, ang **Stage monitor** tab ang eksaktong preview nito.
   - **Stage announcement** — sa ibaba ng Live panel: mag-type o pumili ng preset (Ulitin ang chorus, Last chorus, Bridge, Slow down, Key up, Tapusin na) → **Send sa Stage**. Dilaw na banner sa taas ng Stage screen lang, hindi sa projector. Habang nagta-type, may dashed na **DRAFT** sa preview (laptop lang). Opsyonal na kumikislap pag bagong labas.
@@ -58,7 +59,7 @@ Mga paalala:
 
 ## Account (login) at subscription plan
 
-Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync). **Naka-lock na ang phone remote** (Basic o Pro plan); ang iba ay hindi pa.
+Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync). **Naka-lock ang phone remote at ang Lineups** (Basic o Pro plan); ang cloud sync ay hindi pa.
 
 - **Account button** (icon ng tao sa app bar): Login, Gumawa ng account, Logout, at kung anong plan.
 - Isang account = isang simbahan. Email ang login name.
