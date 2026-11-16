@@ -8,9 +8,29 @@
  */
 import React, { useEffect, useState } from "react";
 import { EasyWorshipVersion, SupportedLanguage } from "../types";
-import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize } from "lucide-react";
+import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize, CircleUserRound } from "lucide-react";
 import { AppearancePanel } from "./AppearancePanel";
+import { AccountModal } from "./AccountModal";
+import { onOpenAccount, useAuth } from "../lib/auth";
+import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
 import type { Appearance } from "../lib/appearance";
+
+// 2026-11-16: back from PayMongo's checkout page (?billing=success|cancel), or a link straight to
+// the Account window (?account): open it, and clean the address so a reload does not repeat it.
+// Read once when the file loads (not in a component: React runs those twice in development).
+const START = (() => {
+  const q = new URLSearchParams(window.location.search);
+  const b = q.get("billing");
+  const returned: "success" | "cancel" | null = b === "success" || b === "cancel" ? b : null;
+  const openAccount = !!returned || q.has("account");
+  if (openAccount) {
+    q.delete("billing");
+    q.delete("account");
+    const rest = q.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+  }
+  return { returned, openAccount };
+})();
 
 export type AppTab = "chat" | "simulator" | "guides" | "shortcuts";
 export type Theme = "dark" | "light";
@@ -81,6 +101,11 @@ const chevron = {
 export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, setLanguage, activeTab, setActiveTab, appearance, onAppearanceChange, status }) => {
   const [showAppearance, setShowAppearance] = useState(false);
   const fs = useFullscreen();
+  // 2026-11-16: account (optional login; the plan unlocks paid features — lib/auth.ts)
+  const [showAccount, setShowAccount] = useState(START.openAccount);
+  const auth = useAuth();
+  useEffect(() => onOpenAccount(() => setShowAccount(true)), []);
+  const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-login o gumawa ng account";
   return (
     // 2026-11-15 (Sanctuary mockup): desktop app bar sits on the canvas (no bar color), controls are grouped boxes
     <header className="relative z-50 shrink-0 border-b border-line bg-surface lg:border-transparent lg:bg-transparent">
@@ -179,9 +204,21 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
           >
             <Palette className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => setShowAccount(true)}
+            className="btn btn-ghost btn-icon tap-target relative lg:border-line"
+            title={accountTitle}
+            aria-label={accountTitle}
+            data-testid="account-button"
+          >
+            <CircleUserRound className="h-4 w-4" />
+            {auth.status === "user" && <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ${auth.offline ? "bg-warn" : "bg-ok"}`} aria-hidden />}
+          </button>
         </div>
       </div>
       {showAppearance && <AppearancePanel value={appearance} onChange={onAppearanceChange} onClose={() => setShowAppearance(false)} />}
+      {showAccount && <AccountModal auth={auth} returned={START.returned} onClose={() => setShowAccount(false)} />}
     </header>
   );
 };

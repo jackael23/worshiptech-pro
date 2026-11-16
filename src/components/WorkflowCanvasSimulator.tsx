@@ -22,6 +22,8 @@ import {
   Presentation as PresentationIcon,
   Smartphone,
   RefreshCw,
+  Lock,
+  CalendarDays,
   Type as TypeIcon,
   SwatchBook,
   X,
@@ -51,6 +53,8 @@ import { StageView, loadStagePrefs, STAGE_PREFS_KEY, StagePrefs } from "./StageS
 import { openOutputWindow, canUseSecondScreen, listScreens, loadScreenChoice, ScreenChoice, OutputKind } from "../lib/liveChannel";
 import type { StoredPresentation } from "../lib/presentationStore";
 import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
+import { openAccount, useAuth } from "../lib/auth";
+import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary } from "./MediaLibrary";
@@ -59,6 +63,7 @@ import { ItemBg, PresentationTheme, ThemeStore, findTheme, loadThemeStore, resol
 import { isVideoId } from "../lib/mediaStore";
 import { useLogoFrame, withLogo } from "../lib/logoStore";
 import { LogoSettingsModal } from "./LogoSettingsModal";
+import { LineupsModal } from "./LineupsModal";
 import { usePanelLayout, dragColumns, toShares, gridColumns, dragSchedList } from "../lib/panelLayout";
 import { ResizeHandle } from "./ResizeHandle";
 import { SongEditorModal } from "./SongEditorModal";
@@ -145,6 +150,23 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     if (scheduleLoaded.current) saveSelectedIndex(selectedScheduleIndex);
   }, [selectedScheduleIndex]);
   const [selectedSlideIndex, setSelectedSlideIndex] = useState<number>(0);
+  // 2026-11-16: saved lineups (Schedule → Lineups; paid — lib/lineupStore.ts)
+  const [lineupsOpen, setLineupsOpen] = useState(false);
+  /** A saved lineup replaces the working Schedule (same steps as reading the saved schedule at start). */
+  const openLineup = (items: ScheduleItem[]) => {
+    scheduleRef.current = items;
+    setScheduleItems(items);
+    setSelectedScheduleIndex(0);
+    setSelectedSlideIndex(0);
+    // What is on the projector stays only if that item is in the opened lineup; else Standby.
+    setLiveState((prev) =>
+      prev.activeScheduleItemId && !items.some((i) => i.id === prev.activeScheduleItemId)
+        ? { ...prev, isLive: false, activeScheduleItemId: null, currentSlideText: "", currentSlideLabel: "", nextSlideText: undefined }
+        : prev,
+    );
+    // songs edited since the lineup was saved → the lineup's song items catch up
+    if (songsRef.current) applySongs(songsRef.current);
+  };
 
   // ---------- 2026-11-07 (Jarvis): song items follow their My Song (lib/scheduleSync.ts) ----------
   // Latest schedule for async callbacks (song DB changes arrive outside React's render).
@@ -818,9 +840,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         return false;
     }
   };
+  // 2026-11-16: phone remote is a paid feature (Basic / Pro) — lib/entitlements.ts
+  const auth = useAuth();
+  const remoteAllowed = auth.status === "loading" ? null : hasFeature(planFromRoles(auth.roles), "remote");
   const remote = useRemoteHost((cmd) => {
     if (!handleRemoteScheduleCmd(cmd)) handleRemoteCmd(cmd);
-  });
+  }, remoteAllowed);
   // Library for the phones: song titles (Hymns + My Songs, no lyrics) + imported Bibles
   const [bibleList, setBibleList] = useState<BibleMeta[]>([]);
   useEffect(() => {
@@ -1153,6 +1178,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             <span className="text-xs text-fg-subtle">
               {scheduleItems.length} {scheduleItems.length === 1 ? "item" : "items"}
             </span>
+            <button onClick={() => setLineupsOpen(true)} className="btn btn-ghost btn-sm touch-44 lg:min-h-0 lg:min-w-0" title="Lineups: i-save o buksan ang schedule ng bawat service" data-testid="lineups-button">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Lineups
+            </button>
             <button
               onClick={() => {
                 const title = prompt("Enter custom schedule item title:");
@@ -1184,6 +1213,16 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               scheduleEdit={{ linked: songEdit.linked }}
               onSave={handleSongEditSave}
               onClose={() => setSongEdit(null)}
+            />
+          )}
+          {lineupsOpen && (
+            <LineupsModal
+              allowed={hasFeature(planFromRoles(auth.roles), "schedule")}
+              auth={auth}
+              items={scheduleItems}
+              isLive={liveState.isLive && !!liveState.activeScheduleItemId}
+              onOpen={openLineup}
+              onClose={() => setLineupsOpen(false)}
             />
           )}
           {songEditNotice && (
@@ -1617,7 +1656,29 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     </div>
                   )}
 
-                  {tool === "phone" && (
+                  {tool === "phone" && remote.availability === "locked" && (
+                    <div className="space-y-2 text-xs text-fg-muted" data-testid="remote-locked">
+                      <p className="inline-flex items-center gap-1.5 font-semibold text-fg">
+                        <Lock className="h-3.5 w-3.5" />
+                        Para sa Basic at Pro plan ang phone remote
+                      </p>
+                      <p>Kontrolin ang Live, schedule, Bible at alerts mula sa phone sa parehong WiFi. Libre pa rin ang songs, Bible at projection.</p>
+                      {auth.status === "user" ? (
+                        <>
+                          <p className="notice-warn">Free ang plan ng account na <span className="break-all text-fg">{auth.name}</span>.</p>
+                          <button onClick={openAccount} className="btn btn-primary btn-sm" data-testid="remote-locked-plans">
+                            Tingnan ang plans
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={openAccount} className="btn btn-primary btn-sm" data-testid="remote-locked-login">
+                          Mag-login o gumawa ng account
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {tool === "phone" && remote.availability !== "locked" && (
                     <div className="space-y-2 text-xs text-fg-muted">
                       <p className={`inline-flex items-center gap-1.5 ${remote.phones ? "text-fg" : "text-fg-subtle"}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${remote.phones ? "bg-ok" : "bg-fg-subtle"}`} />

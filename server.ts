@@ -4,6 +4,10 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { HOTKEYS_TEXT, HOTKEYS_VERIFIED_FOR } from "./src/data/easyworshipData";
 import { isLocal, registerRemoteRoutes } from "./remoteServer";
+import { registerAuthRoutes } from "./authServer";
+import { registerBillingRoutes } from "./billingServer";
+import { registerCloudRoutes } from "./cloudServer";
+import { registerCouchProxy } from "./couchProxy";
 
 dotenv.config();
 
@@ -123,7 +127,8 @@ function registerAutoStop(app: express.Express) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // 2026-11-16: hosting platforms choose the port (PORT); on the laptop it stays 3000.
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Behind one proxy (Cloud Run / AI Studio) so req.ip is the real client IP.
   // 2026-11-09: only there. On the church laptop there is no proxy, and trusting
@@ -134,7 +139,15 @@ async function startServer() {
   // because the laptop's snapshot (with small slide pictures) can be bigger.
   registerRemoteRoutes(app, PORT);
   registerAutoStop(app);
+  // 2026-11-16: CouchDB behind this address (/couch); on a church laptop it also passes the
+  // account routes on to the hosted server — so it comes first, and before any body parser.
+  registerCouchProxy(app);
+  // cloud sync databases (Pro) + PayMongo subscriptions (the webhook needs the raw body)
+  const cloud = registerCloudRoutes(app);
+  registerBillingRoutes(app, { onPlanChange: cloud.reconcile });
   app.use(express.json({ limit: LIMITS.BODY_MAX }));
+  // 2026-11-16: accounts (sign-up + which CouchDB holds them) — see authServer.ts
+  registerAuthRoutes(app);
 
   // Health check
   app.get("/api/health", (_req, res) => {

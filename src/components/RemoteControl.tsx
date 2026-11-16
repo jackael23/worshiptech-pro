@@ -260,7 +260,7 @@ export const RemoteControl: React.FC = () => {
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         {!snap ? (
-          <p className="p-6 text-center text-sm text-fg-muted">{hostOn ? "Hinihintay ang screen mula sa laptop…" : "Buksan ang Simulator tab sa laptop."}</p>
+          <p className="p-6 text-center text-sm text-fg-muted">{hostOn ? "Hinihintay ang screen mula sa laptop…" : "Buksan ang Simulator tab sa laptop. (Kailangan ng Basic o Pro plan ang phone remote.)"}</p>
         ) : tab === "live" ? (
           <LiveTab snap={snap} cmd={cmd} disabled={disabled} />
         ) : tab === "schedule" ? (

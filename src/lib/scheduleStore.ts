@@ -45,7 +45,7 @@ function cleanSlide(raw: unknown): SlideContent | null {
 }
 
 /** Light check of what was saved (keeps unknown-but-valid fields such as textStyle / bgSettings). */
-function cleanItems(v: unknown): ScheduleItem[] | null {
+export function cleanItems(v: unknown): ScheduleItem[] | null {
   if (!Array.isArray(v)) return null;
   const out: ScheduleItem[] = [];
   for (const raw of v.slice(0, MAX_ITEMS)) {
