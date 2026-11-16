@@ -1216,8 +1216,18 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     setSelectedSlideIndex(0);
                     goLiveAt(item, 0);
                   }}
+                  // 2026-11-16: keyboard — Tab reaches the row (its Edit / Move / Remove then show and are next in Tab order);
+                  // Enter / Space selects it. preventDefault keeps the global Enter = GO LIVE shortcut out of it.
+                  tabIndex={0}
+                  aria-current={isSelected ? "true" : undefined}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                    e.preventDefault();
+                    setSelectedScheduleIndex(idx);
+                    setSelectedSlideIndex(0);
+                  }}
                   title="Double-click = LIVE (unang slide)"
-                  className={`group sched-row flex min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-12 lg:px-3.5 lg:text-sm ${
+                  className={`group sched-row flex outline-none focus-visible:ring-2 focus-visible:ring-accent min-h-[52px] cursor-pointer select-none items-center gap-3 rounded-lg px-2.5 text-[15px] touch-manipulation transition-colors lg:min-h-12 lg:px-3.5 lg:text-sm ${
                     isSelected ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent/40" : "text-fg hover:bg-surface-2"
                   }`}
                 >
