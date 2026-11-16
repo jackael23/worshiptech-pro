@@ -15,7 +15,7 @@
  * Talks to the local server (remoteServer.ts) — Server-Sent Events in, small POSTs out.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, ListOrdered, MonitorPlay, StickyNote, AlertTriangle, LogOut, Image as ImageIcon, Music2, Minus, Plus, Library, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X, Megaphone } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, MonitorPlay, LogOut, Image as ImageIcon, Music2, Minus, Plus, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X, Megaphone } from "lucide-react";
 import { ChordSheet, nextPreview } from "./ChordSheet";
 import { transposeKey } from "../lib/chords";
 import { LiveMainScreen } from "./LiveScreen";
@@ -228,19 +228,32 @@ export const RemoteControl: React.FC = () => {
         ? { dot: "bg-warn", text: "Buksan ang Simulator sa laptop" }
         : { dot: "bg-ok", text: "Connected" };
   const disabled = conn !== "online" || !hostOn || !snap;
+  const liveOnAir = !!live && live.isLive && !live.isBlackout;
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-canvas font-sans text-fg">
-      {/* top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-        <MonitorPlay className="h-4 w-4 text-accent" />
-        <span className="text-sm font-semibold">Remote</span>
-        <span className="ml-1 inline-flex min-w-0 items-center gap-1.5 text-xs text-fg-muted" role="status" data-testid="remote-status">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
-          <span className="truncate">{status.text}</span>
-        </span>
-        <span className="ml-auto font-mono text-xs tabular-nums text-fg-subtle">{clock}</span>
-        <button onClick={() => logout()} className="btn btn-ghost btn-icon touch-44" aria-label="Disconnect" title="Disconnect">
+      {/* top bar — 2026-11-16 (Sanctuary): small status line, serif title of the tab, ON AIR pill (mockup) */}
+      <header className="flex shrink-0 items-center gap-3 px-5 pb-2 pt-[max(1.25rem,env(safe-area-inset-top))]">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted" role="status" data-testid="remote-status">
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} />
+            <span className="truncate">Remote · {status.text}</span>
+            <span className="shrink-0 font-mono tabular-nums text-fg-subtle">· {clock}</span>
+          </div>
+          <h1 className="font-display text-[26px] font-medium leading-tight tracking-tight">{TABS.find(([id]) => id === tab)?.[1]}</h1>
+        </div>
+        {live && (
+          <span
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-[0.06em] ${
+              liveOnAir ? "bg-live-soft text-live-text" : "bg-surface-3 text-fg-muted"
+            }`}
+            data-testid="remote-state"
+          >
+            <span className={`h-[7px] w-[7px] rounded-full ${liveOnAir ? "bg-live" : "bg-fg-subtle"}`} />
+            {liveStateText(live)}
+          </span>
+        )}
+        <button onClick={() => logout()} className="btn btn-ghost btn-icon touch-44 -mr-2 shrink-0 text-fg-muted" aria-label="Disconnect" title="Disconnect">
           <LogOut className="h-4 w-4" />
         </button>
       </header>
@@ -264,41 +277,45 @@ export const RemoteControl: React.FC = () => {
       </main>
 
       {toast && (
-        <div role="status" className="pointer-events-none fixed inset-x-4 bottom-20 z-10 rounded-lg bg-fg px-3 py-2 text-center text-sm text-canvas shadow-lg">
+        <div role="status" className="pointer-events-none fixed inset-x-4 bottom-24 z-10 rounded-lg bg-fg px-3 py-2 text-center text-sm text-canvas shadow-lg">
           {toast}
         </div>
       )}
 
-      {/* bottom tabs */}
-      <nav className="grid shrink-0 grid-cols-6 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]" aria-label="Remote">
-        {(
-          [
-            ["live", "Live", MonitorPlay],
-            ["schedule", "Schedule", ListOrdered],
-            ["library", "Library", Library],
-            ["chords", "Chords", Music2],
-            ["notes", "Notes", StickyNote],
-            ["alert", "Alert", AlertTriangle],
-          ] as const
-        ).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            aria-current={tab === id ? "page" : undefined}
-            className={`relative flex h-14 flex-col items-center justify-center gap-0.5 text-xs ${tab === id ? "text-accent-text" : "text-fg-muted"}`}
-          >
-            <Icon className="h-5 w-5" />
-            {label}
-            {id === "alert" && (live?.nurseryAlertActive || live?.stageMessageActive) && (
-              <span className={`absolute right-[30%] top-2 h-2 w-2 rounded-full ${live.nurseryAlertActive ? "bg-live" : "bg-amber-400"}`} />
-            )}
-            {id === "live" && live?.isLive && !live.isBlackout && <span className="absolute right-[30%] top-2 h-2 w-2 rounded-full bg-live" />}
-          </button>
-        ))}
+      {/* bottom tabs — 2026-11-16 (Sanctuary): a floating pill with text tabs (mockup); all 6 tabs stay */}
+      <nav className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2" aria-label="Remote">
+        <div className="grid grid-cols-6 gap-0.5 rounded-lg border border-line bg-surface-2 p-1 min-[375px]:gap-1 min-[375px]:p-1.5">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              aria-current={tab === id ? "page" : undefined}
+              className={`relative min-w-0 rounded-md px-0 py-3 text-[10px] tracking-tight transition-colors min-[375px]:text-[11px] ${tab === id ? "bg-fg font-semibold text-canvas" : "font-medium text-fg-muted active:bg-surface-3"}`}
+            >
+              {label}
+              {id === "alert" && (live?.nurseryAlertActive || live?.stageMessageActive) && (
+                <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ${live.nurseryAlertActive ? "bg-live" : "bg-amber-400"}`} />
+              )}
+              {id === "live" && liveOnAir && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-live" />}
+            </button>
+          ))}
+        </div>
       </nav>
     </div>
   );
 };
+
+// 2026-11-16: tab list (bottom pill + title in the top bar)
+const TABS = [
+  ["live", "Live"],
+  ["schedule", "Schedule"],
+  ["library", "Library"],
+  ["chords", "Chords"],
+  ["notes", "Notes"],
+  ["alert", "Alert"],
+] as const;
+const liveStateText = (live: RemoteSnapshot["live"]) =>
+  live.isBlackout ? "Black" : live.isLogo ? "Logo" : live.isClearText ? "Text off" : live.isLive ? "On air" : "Standby";
 
 // ---------------------------------------------------------------- tabs
 interface TabProps {
@@ -311,7 +328,7 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
   const { live, next } = snap;
   const selItem = snap.schedule.find((i) => i.id === snap.selected.itemId);
   const selSlide = selItem?.slides[snap.selected.slide];
-  const state = live.isBlackout ? "Black" : live.isLogo ? "Logo" : live.isClearText ? "Text off" : live.isLive ? "On air" : "Standby";
+  const onAir = live.isLive && !live.isBlackout;
   // 2026-11-05: song before / after the item on air (or the laptop's selected item when nothing is on air)
   const baseIdx = snap.schedule.findIndex((i) => i.id === (live.activeScheduleItemId || snap.selected.itemId));
   const prevSong = baseIdx > 0 ? snap.schedule[baseIdx - 1] : undefined;
@@ -322,40 +339,68 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
   const jumpItem = snap.schedule.find((i) => i.id === (jumpOnAir ? live.activeScheduleItemId : snap.selected.itemId));
   return (
     <div className="mx-auto max-w-xl space-y-3 p-3">
-      <div>
-        <div className="mb-1.5 flex items-center justify-between text-xs">
-          <span className="truncate font-medium">
-            <span className="text-live-text">LIVE</span> · {live.currentSlideLabel || "—"}
-          </span>
-          <span className={`badge ${live.isLive && !live.isBlackout ? "badge-live" : ""}`} data-testid="remote-state">
-            {state}
-          </span>
-        </div>
-        <div className="overflow-hidden rounded-lg ring-1 ring-live/60" data-testid="remote-live">
+      {/* 2026-11-16 (Sanctuary): coral gradient frame while on air; the state sits in the top bar's pill */}
+      <div className={`rounded-lg p-[3px] ${onAir ? "remote-live-frame" : "bg-line"}`}>
+        <div className="overflow-hidden rounded-md" data-testid="remote-live" aria-label={`LIVE: ${live.currentSlideLabel || "—"}`}>
           <LiveMainScreen liveState={live} operator fade={false} playVideo={false} />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="w-2/5 shrink-0 overflow-hidden rounded-md ring-1 ring-line">
+      <div className="flex items-center gap-3 rounded-lg border border-line bg-surface-2 p-3">
+        <div className="w-24 shrink-0 overflow-hidden rounded-md ring-1 ring-line">
           {next ? <SlideScreen slide={next} background={next.background} textScale={6} textStyle={next.textStyle} bgSettings={next.bgSettings} ariaHidden /> : <div className="grid aspect-video place-items-center bg-surface-2 text-xs text-fg-subtle">Wala na</div>}
         </div>
         <div className="min-w-0 text-xs">
-          <div className="eyebrow mb-0.5">Next</div>
+          <div className="eyebrow mb-0.5 tracking-[0.14em] text-accent-text">Next</div>
           <div className="truncate text-sm text-fg">{next ? next.label : "(dulo ng item)"}</div>
           <div className="line-clamp-2 text-fg-muted">{next?.text.split("\n")[0]}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button disabled={disabled} onClick={() => cmd({ type: "prev" })} className="btn btn-secondary h-20 rounded-xl text-base" aria-label="Previous slide">
-          <ChevronLeft className="h-6 w-6" /> Prev
+        <button disabled={disabled} onClick={() => cmd({ type: "prev" })} className="btn btn-secondary h-16 rounded-lg text-[15px] font-semibold" aria-label="Previous slide">
+          <ChevronLeft className="h-5 w-5" /> Prev
         </button>
-        <button disabled={disabled} onClick={() => cmd({ type: "next" })} className="btn btn-primary h-20 rounded-xl text-base" aria-label="Next slide">
-          Next <ChevronRight className="h-6 w-6" />
+        <button disabled={disabled} onClick={() => cmd({ type: "next" })} className="btn btn-secondary h-16 rounded-lg text-[15px] font-semibold" aria-label="Next slide">
+          Next <ChevronRight className="h-5 w-5" />
         </button>
       </div>
 
+      <button disabled={disabled} onClick={() => cmd({ type: "golive" })} className="btn btn-live h-16 w-full rounded-lg text-base tracking-[0.04em]" aria-label="Go live with the laptop preview">
+        {/* 2026-11-15: coral like the laptop's GO LIVE (Sanctuary look) */}
+        <Play className="h-4 w-4 fill-current" />
+        GO LIVE
+        <span className="min-w-0 truncate text-sm font-normal tracking-normal text-white/85">· {selSlide ? `${selItem?.title} — ${selSlide.label}` : "preview"}</span>
+      </button>
+
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          disabled={disabled}
+          onClick={() => cmd({ type: "black" })}
+          aria-pressed={live.isBlackout}
+          className={`btn h-12 rounded-md text-sm ${live.isBlackout ? "bg-fg text-canvas" : "btn-secondary"}`}
+        >
+          Black
+        </button>
+        <button
+          disabled={disabled}
+          onClick={() => cmd({ type: "clear" })}
+          aria-pressed={live.isClearText}
+          className={`btn h-12 rounded-md text-sm ${live.isClearText ? "bg-warn-soft text-warn-text ring-1 ring-warn/60" : "btn-secondary"}`}
+        >
+          Clear
+        </button>
+        <button
+          disabled={disabled}
+          onClick={() => cmd({ type: "logo" })}
+          aria-pressed={live.isLogo}
+          className={`btn h-12 rounded-md text-sm ${live.isLogo ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-secondary"}`}
+        >
+          Logo
+        </button>
+      </div>
+
+      {/* 2026-11-16: below the main controls now, so GO LIVE is reachable without scrolling */}
       {/* 2026-11-08 (Mira): all slides of the item on air (or the laptop's selected item) — one tap = LIVE,
           to jump e.g. from the Chorus back to Verse 1 */}
       {jumpItem && jumpItem.slides.length > 0 && (
@@ -417,40 +462,6 @@ const LiveTab: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
             <span className="block truncate text-sm">{nextSong ? nextSong.title : "—"}</span>
           </span>
           <ChevronsRight className="h-5 w-5 shrink-0" />
-        </button>
-      </div>
-
-      <button disabled={disabled} onClick={() => cmd({ type: "golive" })} className="btn btn-live h-14 w-full rounded-xl text-sm" aria-label="Go live with the laptop preview">
-        {/* 2026-11-15: coral like the laptop's GO LIVE (Sanctuary look) */}
-        <Play className="h-4 w-4 fill-current" />
-        GO LIVE
-        <span className="min-w-0 truncate font-normal text-white/85">· {selSlide ? `${selItem?.title} — ${selSlide.label}` : "preview"}</span>
-      </button>
-
-      <div className="grid grid-cols-3 gap-2">
-        <button
-          disabled={disabled}
-          onClick={() => cmd({ type: "black" })}
-          aria-pressed={live.isBlackout}
-          className={`btn h-14 rounded-xl text-sm ${live.isBlackout ? "bg-fg text-canvas" : "btn-secondary"}`}
-        >
-          Black
-        </button>
-        <button
-          disabled={disabled}
-          onClick={() => cmd({ type: "clear" })}
-          aria-pressed={live.isClearText}
-          className={`btn h-14 rounded-xl text-sm ${live.isClearText ? "bg-warn-soft text-warn-text ring-1 ring-warn/60" : "btn-secondary"}`}
-        >
-          Clear
-        </button>
-        <button
-          disabled={disabled}
-          onClick={() => cmd({ type: "logo" })}
-          aria-pressed={live.isLogo}
-          className={`btn h-14 rounded-xl text-sm ${live.isLogo ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-secondary"}`}
-        >
-          Logo
         </button>
       </div>
     </div>
