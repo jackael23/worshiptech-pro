@@ -9,6 +9,7 @@
  * Sign-up needs a server because CouchDB 3 lets only an admin write to _users, and the admin
  * password must never reach the browser. It is read from .env:
  *    COUCHDB_URL (default http://localhost:5984), COUCHDB_ADMIN_USER, COUCHDB_ADMIN_PASSWORD
+ * A church laptop (CLOUD_URL set) passes these routes on to the hosted server (couchProxy.ts).
  *
  * New accounts get NO roles (= Free plan). The plan is a role ("plan:basic" / "plan:pro",
  * src/lib/entitlements.ts) that only an admin can set — later, the payment webhook.
@@ -18,11 +19,11 @@
  */
 import type { Express } from "express";
 import { isLocal } from "./remoteServer";
+import { couchEnv } from "./serverCouch";
 
 const RL = {
   SIGNUP_WINDOW_MS: 60 * 60 * 1000,
   SIGNUP_MAX: 10, // sign-up tries per IP per hour
-  COUCH_TIMEOUT_MS: 8000,
 };
 const PASSWORD_MIN = 8; // same as src/lib/auth.ts
 const PASSWORD_MAX = 128;
@@ -48,15 +49,12 @@ setInterval(() => {
 
 /** Call after express.json() is registered. */
 export function registerAuthRoutes(app: Express) {
-  // Read here, not at import time: dotenv has not run yet when this file is first loaded.
-  const couchUrl = (process.env.COUCHDB_URL || "http://localhost:5984").replace(/\/+$/, "");
-  const adminUser = process.env.COUCHDB_ADMIN_USER || "";
-  const adminPassword = process.env.COUCHDB_ADMIN_PASSWORD || "";
-  const canSignup = !!adminUser && !!adminPassword;
+  const { couch, hasAdmin: canSignup, userPath } = couchEnv();
   const publicSignup = process.env.TRUST_PROXY === "1" || !!process.env.K_SERVICE;
 
   app.get("/api/auth/config", (_req, res) => {
-    res.json({ couchUrl, signup: canSignup });
+    // "/couch" = CouchDB behind this same address (couchProxy.ts), so the login cookie just works.
+    res.json({ couchUrl: "/couch", signup: canSignup });
   });
 
   app.post("/api/auth/signup", async (req, res) => {
@@ -75,15 +73,10 @@ export function registerAuthRoutes(app: Express) {
     }
 
     try {
-      const r = await fetch(`${couchUrl}/_users/${encodeURIComponent(`org.couchdb.user:${email}`)}`, {
+      const r = await couch(userPath(email), {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString("base64")}`,
-        },
         // CouchDB hashes `password` itself and never stores it as typed.
         body: JSON.stringify({ name: email, type: "user", roles: [], password, church, createdAt: new Date().toISOString() }),
-        signal: AbortSignal.timeout(RL.COUCH_TIMEOUT_MS),
       });
       if (r.status === 201 || r.status === 202) return res.status(201).json({ ok: true });
       if (r.status === 409) return res.status(409).json({ error: "May account na sa email na ito. Mag-login na lang." });

@@ -32,6 +32,10 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Layout
 
+- `serverCouch.ts` — shared server helpers: where CouchDB is, admin fetch, "who is asking" (cookie)
+- `couchProxy.ts` — `/couch` = CouchDB behind the app's address; laptop → hosted forwarding (`CLOUD_URL`)
+- `cloudServer.ts` — cloud sync: per-church databases, lock / unlock by plan
+- `deploy/` + `Dockerfile` — hosted server (app + CouchDB + Caddy) on one VPS
 - `authServer.ts` — account routes (sign-up, config)
 - `billingServer.ts` — PayMongo: checkout, webhook, confirm, hourly expiry sweep
 - `server.ts` — Express: `/api/chat` (rate limited), `/api/health`, `/api/app/presence` (auto-stop)
@@ -59,8 +63,8 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Auth and subscriptions
 
-Login is done; the phone remote and saved Lineups are locked behind Basic / Pro (2026-11-16).
-Cloud sync is not locked yet (the hosted version does not exist yet).
+Done (2026-11-16): login, phone remote + Lineups locked to Basic / Pro, PayMongo prepaid billing,
+cloud sync for Pro. Nothing is deployed yet: no hosted server exists, PayMongo is untested live.
 
 How it works:
 
@@ -98,25 +102,41 @@ Decisions (confirmed by Jack 2026-11-16):
   only that answer is trusted; then `_users` doc gets `plan:<plan>` + `subscription.expiresAt`
   (+ `orders` list = idempotency). Hourly sweep removes ended plans (3-day grace). Roles set by
   hand (no `subscription`) are never touched. Routes identify the account by forwarding the
-  `AuthSession` cookie to CouchDB. Prices live at the top of `billingServer.ts`
-  (Basic ₱299/mo, ₱2,990/yr; Pro ₱699 listed but `available: false` until cloud sync).
+  `AuthSession` cookie to CouchDB (`sessionOf` in `serverCouch.ts`). Prices live at the top of `billingServer.ts`
+  (Basic ₱299/mo, ₱2,990/yr; Pro ₱699/mo, ₱6,990/yr). Plan change keeps the value of the time left.
+- Topology: HOSTED server (admin login + PayMongo keys; `deploy/`) and church LAPTOPS
+  (`CLOUD_URL=https://hosted`; no secrets). The browser always talks to CouchDB at same-origin
+  `/couch` (`couchProxy.ts`: only `_session` and `wtpc-*` databases pass; streams bodies). A laptop
+  forwards `/couch`, `/api/auth`, `/api/billing`, `/api/cloud` to the hosted server. This is what
+  makes the login cookie work everywhere (cross-site cookies are blocked by browsers).
+- Cloud sync (`cloudServer.ts`): databases `wtpc-<sha256(account)[:32]>-<kind>` (songs, bibles,
+  presentations, media, lineups), `_security` members = the account. Plan enforced by CouchDB:
+  `reconcile(account)` removes / restores the account in `_security` (never an empty members
+  list = public!) on payment, on plan end, and hourly. Entitlement is read from the user DOC
+  (session roles lag a moment after a change — CouchDB auth cache).
+- Browser HTTP/1.1 limit (6 connections per origin) matters now that CouchDB is same-origin:
+  in cloud mode only songs + lineups are live; bibles / presentations / media sync on change and
+  every 2 min (`periodicSync` in `couchSync.ts`). Do not add more always-open connections.
+- Own-CouchDB sync (direct URL, needs CORS) still exists under "Sariling CouchDB (advanced)".
 - Account server == sync server → one cookie: account logout stops sync (`watchAuth` in couchSync.ts).
 
 Still open / next:
 
 - The single working Schedule must stay free — it is the only way to go live.
-- Tiers: Jack has not decided. Proposed (in `entitlements.ts`): Basic = phone remote + saved
-  lineups (laptop-only features); Pro = Basic + cloud sync (the part with a monthly server cost).
-- Lineups in cloud sync (today they live only in the laptop's browser, PouchDB `wtp-lineups`).
+- Tiers as built (Jack delegated the choice): Basic = phone remote + Lineups; Pro = Basic + cloud sync.
 - PayMongo is NOT yet tested against the real API: this cloud session's network blocks
   paymongo.com (Jack declined a new environment that allows it), so the request shape and the
   `Paymongo-Signature` format (`t=,te=,li=`; HMAC-SHA256 of `<t>.<raw body>`) come from memory and
   search results. Tested against a stand-in server only. First step with real test keys:
   create a checkout, pay in test mode, read the server log.
-- Hosting decision (where the public server + cloud CouchDB run) is still Jack's to make.
+- Deploy for real: rent a VPS, point a domain, `deploy/README.md`. The Docker image build could
+  NOT be verified in the cloud session (no npm registry inside `docker build` there); the same
+  production bundle was run directly with node as "hosted" + "laptop" and tested.
+- Before real customers: backups of the `couch-data` volume, storage quota per church (media
+  videos can be 200 MB each), password reset, service worker (app shell offline on the hosted site).
+- Checkout started on a laptop returns to the HOSTED site (`APP_URL`), where the user may not be
+  logged in; the laptop's "Nakabayad na ako — i-check" button covers it.
 - Offline cache (14 days) can outlive a plan's end date by up to 14 days; fine for a soft lock.
-- Cloud: CouchDB must be same-site with the app (cross-site cookies are blocked); per-church
-  databases — a new account currently has no access to `wtp_*` databases (admin-only by default).
 - CouchDB session timeout is 10 min by default; README tells admins to raise it.
 
 ## Testing notes
@@ -131,5 +151,7 @@ Still open / next:
 - 2026-11-16: Login implemented and tested against a real CouchDB 3.5 (sign-up, login, logout,
   expired session, offline grace, role change by admin, shared login with the sync panel).
 - 2026-11-16: Phone remote locked to Basic / Pro; tested anonymous, Free, Basic, offline, logout.
+- 2026-11-16: Cloud sync built (/couch proxy, per-church databases, lock by plan, laptop → hosted
+  forwarding, Pro on sale, deploy files); tested with a "hosted" + "laptop" server and two browsers.
 - 2026-11-16: PayMongo prepaid billing built (checkout, webhook, confirm, expiry); stand-in tests only.
 - 2026-11-16: Lineups built and locked to Basic / Pro; tested save, open, overwrite, delete, reload.

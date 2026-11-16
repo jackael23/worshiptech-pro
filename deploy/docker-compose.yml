@@ -1,0 +1,43 @@
+# WorshipTech-Pro hosted server: the app + CouchDB + HTTPS (Caddy), on one small VPS.
+# CouchDB has no public port: the outside world reaches it only through the app's /couch.
+#   cp .env.example .env   (fill it in)   →   docker compose up -d --build
+services:
+  couchdb:
+    image: couchdb:3
+    restart: unless-stopped
+    environment:
+      COUCHDB_USER: ${COUCHDB_ADMIN_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_ADMIN_PASSWORD}
+    volumes:
+      - couch-data:/opt/couchdb/data
+      - ./couchdb.ini:/opt/couchdb/etc/local.d/10-wtp.ini:ro
+
+  app:
+    build: ..
+    restart: unless-stopped
+    depends_on: [couchdb]
+    environment:
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_ADMIN_USER: ${COUCHDB_ADMIN_USER}
+      COUCHDB_ADMIN_PASSWORD: ${COUCHDB_ADMIN_PASSWORD}
+      APP_URL: https://${DOMAIN}
+      TRUST_PROXY: "1"
+      PAYMONGO_SECRET_KEY: ${PAYMONGO_SECRET_KEY:-}
+      PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_WEBHOOK_SECRET:-}
+      PAYMONGO_METHODS: ${PAYMONGO_METHODS:-gcash,card}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  couch-data:
+  caddy-data:

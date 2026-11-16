@@ -2,16 +2,16 @@
  * 2026-11-16: saved lineups — keep several schedules (e.g. one per Sunday) and open them later,
  * so a service can be prepared ahead of time. Paid feature ("schedule" in lib/entitlements.ts).
  *  - The ONE working Schedule (lib/scheduleStore.ts) stays free; a lineup is a named copy of it.
- *  - Saved in this browser only for now (PouchDB "wtp-lineups", not synced to CouchDB).
+ *  - Saved in this browser (PouchDB "wtp-lineups"). With cloud sync (Pro) it is one of the synced
+ *    databases (lib/couchSync.ts), so the lineups follow the church to its other computers.
  *  - Same shape as the working schedule: items in one attachment, each picture once
  *    (lib/dataUrlAssets.ts), so a lineup with PPT slides does not balloon.
  */
-import PouchDB from "pouchdb-browser";
 import type { ScheduleItem } from "../types";
 import { cleanItems } from "./scheduleStore";
+import { getLocalDb, watchLocal } from "./couchSync";
 import { packAssets, assetAttachments, unpackAssets } from "./dataUrlAssets";
 
-const DB_NAME = "wtp-lineups";
 const ATTACHMENT = "schedule.json";
 const CURRENT_KEY = "wtp.lineup.current.v1";
 const ID_RE = /^lineup-[\w-]{1,60}$/;
@@ -28,8 +28,10 @@ export interface LineupMeta {
   count: number;
 }
 
-let db: PouchDB.Database | null = null;
-const getDb = () => (db ??= new PouchDB(DB_NAME, { auto_compaction: true }));
+const getDb = () => getLocalDb("lineups");
+
+/** Calls `onChange` when the saved lineups change, e.g. pulled in by sync from another computer. */
+export const watchLineups = (onChange: () => void) => watchLocal("lineups", onChange);
 
 function toMeta(doc: Record<string, unknown>): LineupMeta | null {
   const id = typeof doc._id === "string" && ID_RE.test(doc._id) ? doc._id : null;

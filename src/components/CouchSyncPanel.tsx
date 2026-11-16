@@ -5,9 +5,12 @@
  * Login uses CouchDB's session cookie; the password is never stored by the app.
  * 2026-11-16: same login as the account (lib/auth.ts). Already logged in on this CouchDB
  *   (e.g. from the Account button) → sync turns on without typing the password again.
+ * 2026-11-16 (b): Cloud sync (Pro) on top — one button; the server creates the church's own
+ *   databases (cloudServer.ts) and this panel points the sync at them. The own-CouchDB settings
+ *   stay below it ("Sariling CouchDB").
  */
 import React, { useEffect, useState } from "react";
-import { Database, LogIn, LogOut, X } from "lucide-react";
+import { Cloud, Database, Lock, LogIn, LogOut, X } from "lucide-react";
 import {
   CouchSettings,
   SyncStatus,
@@ -20,7 +23,9 @@ import {
   subscribeSync,
   isSyncRunning,
 } from "../lib/couchSync";
-import { couchLogin, couchLogout, couchSession, refreshAuth, useAuth } from "../lib/auth";
+import { couchLogin, couchLogout, couchSession, getAuthConfig, openAccount, refreshAuth, useAuth } from "../lib/auth";
+import { hasFeature, planFromRoles } from "../lib/entitlements";
+import { DEFAULT_COUCH } from "../lib/couchSync";
 
 const STATE_LABEL: Record<SyncStatus["state"], string> = {
   off: "CouchDB: off",
@@ -123,6 +128,50 @@ export const CouchSyncPanel: React.FC = () => {
     setMsg("Naka-off ang sync. Naka-save pa rin sa browser na ito ang mga kanta, Bible, PPT at media.");
   };
 
+  // ---------- cloud sync (Pro) ----------
+  const cloudOn = settings.cloud && settings.enabled;
+  const ownOn = settings.enabled && !settings.cloud;
+  const [ownOpen, setOwnOpen] = useState(ownOn);
+  const canCloud = account.status === "user" && hasFeature(planFromRoles(account.roles), "cloudSync");
+
+  const enableCloud = async () => {
+    if (busy || !account.name) return;
+    if (!window.confirm(`Isasabay sa cloud ng ${account.name} ang lahat ng kanta, Bible, PPT, media at lineups na nasa browser na ito, at ida-download dito ang nasa cloud. Ituloy?`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/cloud/provision", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await res.json().catch(() => null)) as { dbs?: Record<string, unknown>; error?: unknown } | null;
+      const d = j?.dbs;
+      const names = d && ["songs", "bibles", "presentations", "media", "lineups"].map((k) => d[k]);
+      if (!res.ok || !names || !names.every((n): n is string => typeof n === "string")) {
+        setMsg(typeof j?.error === "string" ? j.error : "Hindi na-setup ang cloud sync.");
+        return;
+      }
+      const { couchUrl } = await getAuthConfig();
+      const next: CouchSettings = { url: couchUrl, dbName: names[0], bibleDbName: names[1], pptDbName: names[2], mediaDbName: names[3], lineupDbName: names[4], username: account.name, enabled: true, cloud: true };
+      const err = validateCouchSettings(next);
+      if (err) return setMsg(err);
+      setSettings(next);
+      saveCouchSettings(next);
+      startSync(next);
+      setMsg("Naka-on ang cloud sync.");
+    } catch {
+      setMsg("Hindi maabot ang server ng app.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Stops syncing; the account stays logged in and everything stays in this browser and in the cloud. */
+  const disableCloud = () => {
+    stopSync();
+    const next = { ...DEFAULT_COUCH };
+    setSettings(next);
+    saveCouchSettings(next);
+    setMsg("Naka-off ang cloud sync. Naka-save pa rin ang lahat sa browser na ito at sa cloud.");
+  };
+
   const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : null;
   const inputCls = "input w-full text-xs";
 
@@ -138,14 +187,14 @@ export const CouchSyncPanel: React.FC = () => {
       >
         <Database className="w-3.5 h-3.5" />
         <span className={`w-2 h-2 rounded-full ${STATE_DOT[shownState]}`} />
-        {STATE_LABEL[shownState]}
+        {settings.cloud ? STATE_LABEL[shownState].replace("CouchDB", "Cloud") : STATE_LABEL[shownState]}
         {shownState === "synced" && lastSync ? <span className="text-fg-subtle"> · {lastSync}</span> : null}
       </button>
 
       {open && (
         <div className="mt-1.5 p-2.5 rounded-lg border border-line bg-surface-2 space-y-2" data-testid="couch-panel">
           <div className="flex items-center justify-between">
-            <strong className="text-fg">CouchDB sync (Songs, Bible, PPT, Media)</strong>
+            <strong className="text-fg">Sync (Songs, Bible, PPT, Media, Lineups)</strong>
             <button type="button" onClick={() => setOpen(false)} className="tap-target p-1 text-fg-subtle hover:text-fg" aria-label="Isara">
               <X className="w-3.5 h-3.5" />
             </button>
@@ -153,6 +202,43 @@ export const CouchSyncPanel: React.FC = () => {
           <p className="text-fg-subtle">
             Laging naka-save muna sa browser na ito ang kanta, Bible, PPT at media (larawan/video); kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
           </p>
+          <div className="space-y-1.5 rounded-md border border-line p-2" data-testid="cloud-section">
+            <div className="flex items-center gap-1.5 font-semibold text-fg">
+              <Cloud className="w-3.5 h-3.5" /> Cloud sync <span className="font-normal text-fg-subtle">(Pro)</span>
+            </div>
+            {cloudOn ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-fg-muted">Naka-on: <strong className="text-fg break-all">{settings.username}</strong></span>
+                <button type="button" onClick={disableCloud} className="btn btn-secondary btn-sm" data-testid="cloud-off">
+                  I-off
+                </button>
+              </div>
+            ) : account.status !== "user" ? (
+              <>
+                <p className="text-fg-subtle">Iisang library sa lahat ng computer ng simbahan, at backup sa cloud.</p>
+                <button type="button" onClick={openAccount} className="btn btn-secondary btn-sm">
+                  <LogIn className="w-3.5 h-3.5" /> Mag-login muna
+                </button>
+              </>
+            ) : !canCloud ? (
+              <>
+                <p className="inline-flex items-center gap-1.5 text-fg-muted"><Lock className="w-3.5 h-3.5" /> Para sa Pro plan ang cloud sync.</p>
+                <button type="button" onClick={openAccount} className="btn btn-primary btn-sm" data-testid="cloud-locked-plans">
+                  Tingnan ang plans
+                </button>
+              </>
+            ) : ownOn ? (
+              <p className="text-fg-subtle">I-off muna ang sync sa sariling CouchDB (sa ibaba) bago i-on ang cloud sync.</p>
+            ) : (
+              <button type="button" onClick={enableCloud} disabled={busy || account.offline} className="btn btn-primary btn-sm" data-testid="cloud-on">
+                <Cloud className="w-3.5 h-3.5" /> {busy ? "Sandali…" : "I-on ang cloud sync"}
+              </button>
+            )}
+          </div>
+          {!cloudOn && (
+            <details className="space-y-2" open={ownOpen} onToggle={(e) => setOwnOpen(e.currentTarget.open)} data-testid="own-couch">
+              <summary className="cursor-pointer text-fg-muted">Sariling CouchDB (advanced)</summary>
+              <div className="mt-2 space-y-2">
           <label className="block">
             <span className="text-fg-muted">CouchDB URL</span>
             <input className={inputCls} value={settings.url} disabled={settings.enabled} onChange={(e) => setSettings({ ...settings, url: e.target.value.trim() })} placeholder="http://localhost:5984" />
@@ -217,6 +303,9 @@ export const CouchSyncPanel: React.FC = () => {
                 <LogOut className="w-3.5 h-3.5" /> Logout + i-off
               </button>
             </div>
+          )}
+              </div>
+            </details>
           )}
           {status.message && <p className="text-warn-text">{status.message}</p>}
           {msg && <p role="status" className="text-fg">{msg}</p>}

@@ -16,8 +16,6 @@ export interface BillingPlan {
 export interface BillingInfo {
   /** true = this server can take payments. */
   enabled: boolean;
-  /** On a laptop install: the hosted site where paying works (null = none). */
-  billingUrl: string | null;
   plans: BillingPlan[];
 }
 
@@ -29,7 +27,7 @@ export interface BillingStatus {
   newlyPaid?: number;
 }
 
-const NONE: BillingInfo = { enabled: false, billingUrl: null, plans: [] };
+const NONE: BillingInfo = { enabled: false, plans: [] };
 
 let info: Promise<BillingInfo> | null = null;
 export function getBillingInfo(): Promise<BillingInfo> {
@@ -38,7 +36,7 @@ export function getBillingInfo(): Promise<BillingInfo> {
     .then((j: Partial<BillingInfo> | null) => {
       if (!j || !Array.isArray(j.plans)) return NONE;
       const plans = j.plans.filter((p): p is BillingPlan => !!p && typeof p.id === "string" && typeof p.name === "string" && Number.isFinite(p.monthly) && Number.isFinite(p.yearly));
-      return { enabled: j.enabled === true, billingUrl: typeof j.billingUrl === "string" && /^https?:\/\//.test(j.billingUrl) ? j.billingUrl : null, plans };
+      return { enabled: j.enabled === true, plans };
     })
     .catch(() => NONE);
   return info;

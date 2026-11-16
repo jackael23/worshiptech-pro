@@ -8,7 +8,7 @@ import { CalendarDays, FolderOpen, Lock, Save, Trash2, X } from "lucide-react";
 import type { ScheduleItem } from "../types";
 import type { AuthState } from "../lib/auth";
 import { openAccount } from "../lib/auth";
-import { LINEUP_NAME_MAX, LineupMeta, deleteLineup, getCurrentLineupId, listLineups, loadLineup, nextSunday, saveLineup, setCurrentLineupId } from "../lib/lineupStore";
+import { LINEUP_NAME_MAX, LineupMeta, deleteLineup, getCurrentLineupId, listLineups, loadLineup, nextSunday, saveLineup, setCurrentLineupId, watchLineups } from "../lib/lineupStore";
 
 interface Props {
   /** false = the account's plan has no saved lineups. */
@@ -42,7 +42,9 @@ export const LineupsModal: React.FC<Props> = ({ allowed, auth, items, isLive, on
 
   const refresh = () => listLineups().then(setList);
   useEffect(() => {
-    if (allowed) void refresh();
+    if (!allowed) return;
+    void refresh();
+    return watchLineups(() => void refresh()); // a lineup saved on another computer arrives by sync
   }, [allowed]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -203,7 +205,7 @@ export const LineupsModal: React.FC<Props> = ({ allowed, auth, items, isLive, on
                 </ul>
               )}
             </div>
-            <p className="text-xs text-fg-subtle">Naka-save sa browser ng laptop na ito. Hindi pa kasama sa CouchDB sync.</p>
+            <p className="text-xs text-fg-subtle">Naka-save sa browser ng laptop na ito. Sa Pro plan, kasama ito sa cloud sync (makikita rin sa ibang computer ng simbahan).</p>
           </div>
         )}
       </div>

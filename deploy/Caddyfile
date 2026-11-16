@@ -1,0 +1,4 @@
+# HTTPS certificate is fetched automatically for DOMAIN (its DNS must point at this server).
+{$DOMAIN} {
+	reverse_proxy app:3000
+}

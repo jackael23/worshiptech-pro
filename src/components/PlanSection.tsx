@@ -3,7 +3,7 @@
  * buttons to buy 1 month / 1 year (PayMongo checkout in a new tab). See lib/billing.ts.
  */
 import React, { useEffect, useState } from "react";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { refreshAuth } from "../lib/auth";
 import { Plan } from "../lib/entitlements";
 import { BillingInfo, BillingStatus, confirmPayments, getBillingInfo, getBillingStatus, peso, startCheckout } from "../lib/billing";
@@ -15,6 +15,7 @@ interface Props {
 }
 
 const WARN_DAYS = 7;
+const INCLUDES: Record<string, string> = { basic: "Phone remote at Lineups", pro: "Lahat ng nasa Basic + cloud sync (songs, Bible, PPT, media at lineups sa lahat ng computer ninyo)" };
 const niceDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
 export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
@@ -96,7 +97,8 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
           {info.plans.map((p) =>
             p.available ? (
               <div key={p.id} className="space-y-1.5 rounded-lg border border-line p-3">
-                <div className="text-xs font-semibold text-fg">{plan === "free" ? `Mag-subscribe sa ${p.name}` : `Dagdagan ang ${p.name}`}</div>
+                <div className="text-xs font-semibold text-fg">{plan === p.id ? `Dagdagan ang ${p.name}` : plan === "basic" && p.id === "pro" ? `Mag-upgrade sa ${p.name}` : `Mag-subscribe sa ${p.name}`}</div>
+                <div className="text-xs text-fg-muted">{INCLUDES[p.id] ?? ""}</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   <button type="button" onClick={() => buy(p.id, "month")} disabled={busy} className="btn btn-secondary btn-sm" data-testid={`buy-${p.id}-month`}>
                     1 buwan · {peso(p.monthly)}
@@ -105,7 +107,6 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
                     1 taon · {peso(p.yearly)}
                   </button>
                 </div>
-                <p className="text-xs text-fg-subtle">Ang 1 taon ay 2 buwan na libre. Isang beses na bayad (GCash, card) — walang kusang sinisingil ulit.</p>
               </div>
             ) : (
               <p key={p.id} className="text-xs text-fg-subtle">
@@ -113,6 +114,7 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
               </p>
             ),
           )}
+          <p className="text-xs text-fg-subtle">Ang 1 taon ay 2 buwan na libre. Isang beses na bayad (GCash, card) — walang kusang sinisingil ulit. Kapag nag-upgrade, hindi nasasayang ang natitirang bayad.</p>
           {waiting && (
             <div className="space-y-1.5 text-xs text-fg-muted">
               <p>Binuksan ang bayaran sa bagong tab. Pagkatapos magbayad, bumalik dito.</p>
@@ -122,10 +124,6 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
             </div>
           )}
         </>
-      ) : info.billingUrl ? (
-        <a href={`${info.billingUrl}/?account`} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm w-full" data-testid="plan-billing-link">
-          <ExternalLink className="h-3.5 w-3.5" /> Mag-subscribe o mag-renew online
-        </a>
       ) : plan === "free" ? (
         <p className="text-xs text-fg-subtle">Wala pang online na bayad sa server na ito.</p>
       ) : null}

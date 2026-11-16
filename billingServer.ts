@@ -28,17 +28,18 @@
  *
  * .env: PAYMONGO_SECRET_KEY (sk_test_… / sk_live_…), PAYMONGO_WEBHOOK_SECRET (whsk_…, optional),
  *       PAYMONGO_METHODS (default "gcash,card"), APP_URL (where PayMongo sends people back),
- *       BILLING_URL (on a laptop install: the hosted site where paying works),
- *       plus the CouchDB admin login from authServer.ts.
+ *       plus the CouchDB admin login (serverCouch.ts).
+ * A church laptop (CLOUD_URL set) passes these routes on to the hosted server (couchProxy.ts).
  * This needs a server PayMongo can reach, i.e. the hosted one — not the church laptop.
  */
 import express, { Express, Request, Response } from "express";
 import crypto from "crypto";
+import { couchEnv, sameOrigin, UserDoc } from "./serverCouch";
 
-// Prices in pesos. A year costs 10 months (2 months free). Pro is not sold until cloud sync exists.
+// Prices in pesos. A year costs 10 months (2 months free).
 const PLANS = [
   { id: "basic", name: "Basic", monthly: 299, available: true },
-  { id: "pro", name: "Pro", monthly: 699, available: false },
+  { id: "pro", name: "Pro", monthly: 699, available: true },
 ] as const;
 type PlanId = (typeof PLANS)[number]["id"];
 const YEAR_PAYS_FOR = 10;
@@ -59,14 +60,7 @@ interface Subscription {
   orders: string[];
   ended?: boolean;
 }
-interface UserDoc {
-  _id: string;
-  _rev: string;
-  name: string;
-  roles?: string[];
-  subscription?: Subscription;
-  [k: string]: unknown;
-}
+type BillingUser = UserDoc & { subscription?: Subscription };
 interface OrderDoc {
   _id: string;
   _rev?: string;
@@ -82,6 +76,7 @@ interface OrderDoc {
 }
 
 const isPlanRole = (r: string) => r.startsWith("plan:");
+const priceOf = (plan: string) => PLANS.find((p) => p.id === plan)?.monthly ?? PLANS[0].monthly;
 
 /** Same day N months later (Jan 31 + 1 month = last day of February). */
 export function addMonths(from: Date, months: number): Date {
@@ -110,15 +105,15 @@ export function validSignature(header: string, rawBody: Buffer, secret: string, 
 }
 
 /** Register BEFORE express.json(): the webhook needs the body exactly as it was sent. */
-export function registerBillingRoutes(app: Express) {
-  const couchUrl = (process.env.COUCHDB_URL || "http://localhost:5984").replace(/\/+$/, "");
-  const adminAuth = `Basic ${Buffer.from(`${process.env.COUCHDB_ADMIN_USER || ""}:${process.env.COUCHDB_ADMIN_PASSWORD || ""}`).toString("base64")}`;
-  const hasAdmin = !!process.env.COUCHDB_ADMIN_USER && !!process.env.COUCHDB_ADMIN_PASSWORD;
+export function registerBillingRoutes(app: Express, hooks: { onPlanChange?: (account: string) => Promise<void> } = {}) {
+  const planChanged = (account: string) => hooks.onPlanChange?.(account).catch(() => undefined);
+  const env = couchEnv();
+  const { couch, hasAdmin, userPath, sessionOf } = env;
+  const getUser = (name: string) => env.getUser(name) as Promise<BillingUser | null>;
   const secretKey = process.env.PAYMONGO_SECRET_KEY || "";
   const webhookSecret = process.env.PAYMONGO_WEBHOOK_SECRET || "";
   const apiUrl = (process.env.PAYMONGO_API_URL || "https://api.paymongo.com/v1").replace(/\/+$/, "");
   const methods = (process.env.PAYMONGO_METHODS || "gcash,card").split(",").map((m) => m.trim()).filter(Boolean);
-  const billingUrl = /^https?:\/\//.test(process.env.BILLING_URL || "") ? process.env.BILLING_URL!.replace(/\/+$/, "") : null;
   const enabled = !!secretKey && hasAdmin;
   const json = express.json({ limit: "8kb" });
 
@@ -126,13 +121,6 @@ export function registerBillingRoutes(app: Express) {
 
   // ---------------------------------------------------------------- CouchDB (admin) + PayMongo
 
-  const couch = (path: string, init: RequestInit = {}) =>
-    fetch(`${couchUrl}${path}`, {
-      ...init,
-      headers: { "Content-Type": "application/json", Authorization: adminAuth, ...(init.headers as Record<string, string>) },
-      signal: AbortSignal.timeout(RL.TIMEOUT_MS),
-    });
-  const userPath = (name: string) => `/_users/${encodeURIComponent(`org.couchdb.user:${name}`)}`;
   const orderPath = (csId: string) => `/${BILLING_DB}/${encodeURIComponent(`order:${csId}`)}`;
 
   const paymongo = (path: string, init: RequestInit = {}) =>
@@ -142,47 +130,19 @@ export function registerBillingRoutes(app: Express) {
       signal: AbortSignal.timeout(RL.TIMEOUT_MS),
     });
 
-  /** Whose CouchDB session cookie came with this request (null = nobody). */
-  async function accountOf(req: Request): Promise<string | null> {
-    const m = /(?:^|;\s*)AuthSession=([^;]+)/.exec(String(req.headers.cookie || ""));
-    if (!m) return null;
-    try {
-      const r = await fetch(`${couchUrl}/_session`, { headers: { Cookie: `AuthSession=${m[1]}` }, signal: AbortSignal.timeout(RL.TIMEOUT_MS) });
-      const j = (await r.json()) as { userCtx?: { name?: unknown } };
-      return typeof j.userCtx?.name === "string" && j.userCtx.name ? j.userCtx.name : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Cookie-authenticated POSTs: refuse pages of other sites (their Origin is not ours). */
-  function sameOrigin(req: Request): boolean {
-    const origin = req.headers.origin;
-    if (!origin) return true;
-    try {
-      return new URL(String(origin)).host === req.headers.host;
-    } catch {
-      return false;
-    }
-  }
-
-  async function getUser(name: string): Promise<UserDoc | null> {
-    const r = await couch(userPath(name));
-    if (r.status === 404) return null;
-    if (!r.ok) throw new Error(`CouchDB _users: HTTP ${r.status}`);
-    return (await r.json()) as UserDoc;
-  }
+  const accountOf = async (req: Request) => (await sessionOf(req))?.name ?? null;
 
   // ---------------------------------------------------------------- plan on the user doc
 
   /** Removes the plan of a subscription whose end date (+ grace) has passed. Returns the doc as it is now. */
-  async function endIfOver(user: UserDoc): Promise<UserDoc> {
+  async function endIfOver(user: BillingUser): Promise<BillingUser> {
     const sub = user.subscription;
     if (!sub || sub.ended || Date.parse(sub.expiresAt) + GRACE_DAYS * 86400_000 > Date.now()) return user;
-    const next: UserDoc = { ...user, roles: (user.roles || []).filter((r) => !isPlanRole(r)), subscription: { ...sub, ended: true, updatedAt: new Date().toISOString() } };
+    const next: BillingUser = { ...user, roles: (user.roles || []).filter((r) => !isPlanRole(r)), subscription: { ...sub, ended: true, updatedAt: new Date().toISOString() } };
     const r = await couch(userPath(user.name), { method: "PUT", body: JSON.stringify(next) });
     if (!r.ok) return user; // changed meanwhile (e.g. a payment just arrived): the next check sees it
     console.log(`[billing] plan ended: ${user.name} (${sub.plan}, until ${sub.expiresAt})`);
+    await planChanged(user.name);
     return { ...next, _rev: ((await r.json()) as { rev: string }).rev };
   }
 
@@ -194,10 +154,12 @@ export function registerBillingRoutes(app: Express) {
       const sub = user.subscription;
       if (sub?.orders?.includes(csId)) return;
       const now = new Date();
-      // Paying early adds to the time left (same plan); otherwise the period starts today.
-      const running = sub && !sub.ended && sub.plan === order.plan && Date.parse(sub.expiresAt) > now.getTime();
-      const expiresAt = addMonths(running ? new Date(sub.expiresAt) : now, order.months).toISOString();
-      const next: UserDoc = {
+      // Paying early adds to the time left. Changing plan (Basic → Pro) keeps the VALUE of the
+      // time left: 30 days of a ₱299 plan become ~13 days of a ₱699 plan, added on top.
+      const leftMs = sub && !sub.ended ? Math.max(0, Date.parse(sub.expiresAt) - now.getTime()) : 0;
+      const creditMs = leftMs * (sub && sub.plan !== order.plan ? priceOf(sub.plan) / priceOf(order.plan) : 1);
+      const expiresAt = addMonths(new Date(now.getTime() + creditMs), order.months).toISOString();
+      const next: BillingUser = {
         ...user,
         roles: [...(user.roles || []).filter((r) => !isPlanRole(r)), `plan:${order.plan}`],
         subscription: { plan: order.plan, expiresAt, updatedAt: now.toISOString(), orders: [...(sub?.orders || []), csId].slice(-50) },
@@ -205,6 +167,7 @@ export function registerBillingRoutes(app: Express) {
       const r = await couch(userPath(order.account), { method: "PUT", body: JSON.stringify(next) });
       if (r.ok) {
         console.log(`[billing] paid: ${order.account} → ${order.plan} +${order.months} mo, until ${expiresAt} (${csId})`);
+        await planChanged(order.account);
         return;
       }
       if (r.status !== 409) throw new Error(`CouchDB _users: HTTP ${r.status}`);
@@ -250,7 +213,7 @@ export function registerBillingRoutes(app: Express) {
   // ---------------------------------------------------------------- routes
 
   app.get("/api/billing/plans", (_req, res) => {
-    res.json({ enabled, billingUrl: enabled ? null : billingUrl, plans: publicPlans, methods: enabled ? methods : [] });
+    res.json({ enabled, plans: publicPlans, methods: enabled ? methods : [] });
   });
 
   if (!enabled) {
@@ -372,7 +335,7 @@ export function registerBillingRoutes(app: Express) {
     try {
       const r = await couch(`/_users/_find`, { method: "POST", body: JSON.stringify({ selector: { "subscription.expiresAt": { $lt: new Date(Date.now() - GRACE_DAYS * 86400_000).toISOString() } }, limit: 500 }) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      for (const u of ((await r.json()) as { docs?: UserDoc[] }).docs || []) await endIfOver(u);
+      for (const u of ((await r.json()) as { docs?: BillingUser[] }).docs || []) await endIfOver(u);
     } catch (err) {
       console.error("[billing] sweep:", (err as Error).message);
     }

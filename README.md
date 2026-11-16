@@ -59,13 +59,13 @@ Mga paalala:
 
 ## Account (login) at subscription plan
 
-Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature (phone remote, lineup schedule, cloud sync). **Naka-lock ang phone remote at ang Lineups** (Basic o Pro plan); ang cloud sync ay hindi pa.
+Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account at walang internet. Ang account ay para sa mga paid feature: **phone remote at Lineups** (Basic o Pro) at **cloud sync** (Pro).
 
 - **Account button** (icon ng tao sa app bar): Login, Gumawa ng account, Logout, at kung anong plan.
 - Isang account = isang simbahan. Email ang login name.
 - Ang login ay CouchDB mismo (`_users` + session cookie). Hindi sine-save ang password.
 - Kapag hindi maabot ang CouchDB, ang huling alam na plan ang ginagamit (hanggang 14 na araw).
-- Kapag iisang CouchDB ang account at ang sync, iisa na rin ang login: sa CouchDB sync panel, **I-on ang sync** na lang (walang password ulit). Ang Logout sa Account ay nagpapatigil din ng sync.
+- Ang app ay kumakausap sa CouchDB sa sarili nitong address (`/couch`), kaya walang CORS na kailangan para sa login. Ang Logout sa Account ay nagpapatigil din ng sync.
 
 ### Setup ng CouchDB (isang beses)
 
@@ -78,7 +78,7 @@ Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account
    ```
 
    Kung wala ang admin user/password, Login lang ang lalabas (walang "Gumawa ng account").
-2. CORS sa CouchDB (Fauxton → Configuration → CORS, o sa `local.ini`): enable, origin `http://localhost:3000`, at `credentials = true`.
+2. CORS sa CouchDB: kailangan lang kung gagamit ng **Sariling CouchDB** sa sync panel (Fauxton → Configuration → CORS: enable, origin `http://localhost:3000`, `credentials = true`). Hindi kailangan para sa login o sa cloud sync.
 3. Dapat may `_users` database (ginagawa ito ng Fauxton setup "single node").
 4. Inirerekomenda: habaan ang session. 10 minuto lang ang default ng CouchDB; nire-renew ito ng app habang nakabukas, pero pagkasara ng app nang lampas 10 minuto, login ulit. Sa `local.ini`:
 
@@ -89,7 +89,7 @@ Opsyonal ang login. Gumagana ang songs, Bible at projection kahit walang account
 
 ### Online na bayad (PayMongo)
 
-Prepaid: bumibili ang simbahan ng **1 buwan (₱299)** o **1 taon (₱2,990, 2 buwan libre)** ng Basic. Walang kusang sinisingil ulit. Hindi pa ibinebenta ang Pro (hinihintay ang cloud sync). Ang presyo ay nasa itaas ng `billingServer.ts`.
+Prepaid: bumibili ang simbahan ng **1 buwan** o **1 taon (2 buwan libre)**: Basic ₱299 / ₱2,990, Pro ₱699 / ₱6,990. Walang kusang sinisingil ulit. Kapag nag-upgrade mula Basic papuntang Pro, ang halaga ng natitirang araw ay idinadagdag sa Pro. Ang presyo ay nasa itaas ng `billingServer.ts`.
 
 Paano gumagana: Account → pindutin ang presyo → bubukas ang bayaran ng PayMongo sa bagong tab → pagkabayad, lalagyan ng server ang account ng role na `plan:basic` at ng petsa ng katapusan. Kapag lumampas ang petsa (+3 araw na palugit), kusang tinatanggal ang plan. Ang bayad nang maaga ay idinadagdag sa natitirang panahon.
 
@@ -106,10 +106,20 @@ Paano gumagana: Account → pindutin ang presyo → bubukas ang bayaran ng PayMo
 
    Kasama ang `COUCHDB_ADMIN_USER` / `COUCHDB_ADMIN_PASSWORD` (pareho sa "Gumawa ng account").
 2. Sa PayMongo Dashboard → Developers → Webhooks: gumawa ng webhook sa `https://ang-site-mo/api/billing/webhook` para sa event na `checkout_session.payment.paid`, at kopyahin ang secret nito sa `PAYMONGO_WEBHOOK_SECRET`.
-3. Dapat iisang cookie ang app at ang CouchDB (parehong site; sa CouchDB, itakda ang `cookie_domain`), dahil sa session cookie nakikilala ng server kung sinong account ang nagbabayad.
-4. Sa laptop ng simbahan (walang PayMongo key): ilagay ang `BILLING_URL="https://ang-site-mo"` para may button na "Mag-subscribe o mag-renew online" sa Account.
+3. Sa laptop ng simbahan: `CLOUD_URL="https://ang-site-mo"` lang sa `.env`. Ang login, bayad at cloud sync ng laptop ay ipapasa sa naka-host na server (walang key o password sa laptop).
 
 **Subukan muna gamit ang test keys bago mag-live.** Ang code ay nasubukan laban sa kunwaring PayMongo server, hindi pa sa totoong PayMongo. Kung tinatanggihan ang totoong webhook ("bad signature" sa log ng server), alisin muna ang `PAYMONGO_WEBHOOK_SECRET`: ligtas pa rin, dahil bawat bayad ay kinukumpirma ng server sa PayMongo API mismo bago magbigay ng plan.
+
+### Cloud sync (Pro)
+
+Iisang library (songs, Bible, PPT, media, Lineups) sa lahat ng computer ng simbahan, at kopya sa cloud. Sa alinmang Library tab → **Sync** (sa ibaba) → **I-on ang cloud sync**. Gawin ito sa bawat computer, gamit ang parehong account.
+
+- Bawat simbahan ay may sariling pribadong mga database sa naka-host na CouchDB; ang account lang nila ang nakakabasa.
+- Kanta at Lineups: sumasabay agad. Bible, PPT at media: tuwing may binago, at kada 2 minuto.
+- Laging naka-save muna sa browser, kaya gumagana kahit walang internet; hahabol ang sync pagbalik nito.
+- Kapag natapos ang Pro, naka-lock ang cloud (walang binubura); bumabalik ito pag-renew. Ang nasa browser ay hindi nagagalaw.
+- Kailangan ng naka-host na server: tingnan ang `deploy/README.md` (Docker: app + CouchDB + HTTPS).
+- Nandiyan pa rin ang **Sariling CouchDB (advanced)** sa parehong panel para sa may sariling server.
 
 ### Pagbibigay ng plan nang mano-mano
 
@@ -133,6 +143,8 @@ Nasa `bibles/` ang `.wtp-bible.json` files. I-import sa app: **Simulator → Bib
 - `POST /api/chat` — may rate limit (20 tanong / 10 min bawat IP), max 1,000 characters bawat tanong, huling 20 messages lang ng history ang ipinapadala sa Gemini.
 - `GET /api/health`
 - `GET /api/auth/config`, `POST /api/auth/signup` — account (tingnan ang `authServer.ts`): 10 subok / oras bawat IP; sa laptop lang tinatanggap ang signup maliban kung naka-deploy sa likod ng proxy.
+- `/couch/*` — CouchDB sa likod ng app (`couchProxy.ts`): `_session` at mga cloud database lang ang pinapadaan.
+- `/api/cloud/*` — cloud sync (`cloudServer.ts`): `status`, `provision`.
 - `/api/billing/*` — PayMongo (tingnan ang `billingServer.ts`): `plans`, `status`, `checkout`, `confirm`, `webhook`.
 - `/api/remote/*` — phone remote (tingnan ang `remoteServer.ts`): PIN login (10 subok / 5 min bawat IP), ang laptop-side routes ay para sa localhost lang.
 

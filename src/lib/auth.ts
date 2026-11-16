@@ -90,7 +90,8 @@ export function getAuthConfig(): Promise<AuthConfig> {
   config ??= fetch("/api/auth/config")
     .then((r) => (r.ok ? r.json() : null))
     .then((j: { couchUrl?: unknown; signup?: unknown } | null) => ({
-      couchUrl: typeof j?.couchUrl === "string" && j.couchUrl ? trimUrl(j.couchUrl) : DEFAULT_ACCOUNT_URL,
+      // Normally "/couch": CouchDB behind the app's own address (couchProxy.ts) — made absolute here.
+      couchUrl: typeof j?.couchUrl === "string" && j.couchUrl ? trimUrl(new URL(j.couchUrl, window.location.origin).href) : DEFAULT_ACCOUNT_URL,
       signup: j?.signup === true,
     }))
     .catch(() => ({ couchUrl: DEFAULT_ACCOUNT_URL, signup: false }));
