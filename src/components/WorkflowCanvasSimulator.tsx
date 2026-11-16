@@ -1414,11 +1414,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               <div>
                 {/* 2026-11-16 (Sanctuary): the status sits on the screen ("● ON AIR") like the mockup, not in a row above it */}
                 <div className={`relative overflow-hidden rounded-lg ${liveOnAir ? "live-frame" : "ring-1 ring-line"}`} data-testid="live-monitor">
+                  {/* 2026-11-16: the output name is written beside the status again (it was only a tooltip that never showed) */}
+                  <div className="pointer-events-none absolute left-2.5 right-2.5 top-2.5 z-10 flex items-center gap-1.5">
                   <span
-                    className={`pointer-events-none absolute left-2.5 top-2.5 z-10 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold uppercase leading-none tracking-[0.08em] ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold uppercase leading-none tracking-[0.08em] ${
                       liveOnAir ? "bg-live text-white" : "bg-black/60 text-zinc-200"
                     }`}
-                    title={previewOutputMode === "main" ? "Main projector" : previewOutputMode === "foldback" ? "Stage monitor" : "OBS stream (NDI)"}
                     data-testid="live-status"
                   >
                     <span className="relative flex h-1.5 w-1.5">
@@ -1427,6 +1428,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     </span>
                     {liveState.isLive ? liveStateLabel : "Standby"}
                   </span>
+                  <span className="truncate rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium leading-none text-zinc-200" data-testid="live-output-label">
+                    {previewOutputMode === "main" ? "Main projector" : previewOutputMode === "foldback" ? "Stage monitor" : "OBS stream (NDI)"}
+                  </span>
+                  </div>
                   {/* MAIN — same component as the projector window (2026-10-28) */}
                   {previewOutputMode === "main" && <LiveMainScreen liveState={shownLive} operator />}
 
