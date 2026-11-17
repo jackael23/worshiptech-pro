@@ -24,6 +24,8 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - Chat tab = offline Help, no AI (2026-11-17: Gemini removed): `src/lib/helpKb.ts` (articles),
   `src/lib/helpSearch.ts` (keyword search), `src/lib/musicTools.ts` (transpose / capo calculator)
 - Firebase Hosting config exists for a static-only deploy (no local server there)
+- Team sync (2026-11-17): Firebase Auth (Google) + Firestore, songs only, free Spark plan —
+  see "Team sync (Firebase)" below. The `firebase` SDK is a lazy chunk, loaded only when used.
 
 ## Commands
 
@@ -48,6 +50,12 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - `src/lib/couchSync.ts` — the 4 PouchDB databases (songs, bibles, presentations, media), settings,
   live two-way sync (session login itself lives in `src/lib/auth.ts`)
 - `src/components/CouchSyncPanel.tsx` — sync settings + login UI, shown in each Library tab
+- `src/lib/teamSync.ts` — Team sync: Google login, teams, and the bridge PouchDB "wtp-songs" ⇄ Firestore
+- `src/lib/teamSyncCore.ts` — its pure part: Firestore doc shape, `decide()` (who wins a conflict)
+- `src/lib/teamSyncSettings.ts` — "is Team sync on" + checkpoints (no Firebase import; couchSync reads it)
+- `src/lib/firebaseConfig.ts` — Firebase web config (empty = Team sync hidden)
+- `src/components/TeamSyncPanel.tsx` — Team sync UI, Songs tab only
+- `firestore.rules` — only a team's members (by Google email) can read / write its songs
 - `src/lib/scheduleStore.ts` — schedule saved in local PouchDB `wtp-schedule` (not synced)
 - `src/lib/remoteLink.ts` — laptop ("host") side of the phone remote
 - `bibles/` — public-domain Bible files (`.wtp-bible.json`)
@@ -140,6 +148,51 @@ Still open / next:
 - Offline cache (14 days) can outlive a plan's end date by up to 14 days; fine for a soft lock.
 - CouchDB session timeout is 10 min by default; README tells admins to raise it.
 
+## Team sync (Firebase)
+
+Done (2026-11-17), code only: NOT yet run against a real Firebase project (Jack fills in
+`firebaseConfig.ts`, turns on Firestore + Google sign-in, deploys `firestore.rules`).
+
+- What: one shared song library per worship team. Songs only. Free for everyone (no plan gate —
+  Jack's choice; it overlaps with Pro cloud sync, which still adds Bible / PPT / media / lineups).
+- Separate login from the CouchDB account: Google sign-in (popup). Two logins exist on purpose.
+- Songs still live in PouchDB `wtp-songs`; the app works offline exactly as before. teamSync.ts
+  only mirrors that database to Firestore and back.
+- Firestore: `teams/{ownerUid}` = name, ownerUid, ownerEmail, memberEmails[] (max 30), createdAt.
+  One team per Google account. `teams/{id}/songs/{songId}` = the StoredSong fields + `deleted`,
+  `by`, `serverAt`. A delete is an EMPTY doc with `deleted: true` (so offline laptops hear of it).
+- Downloads only docs with `serverAt` newer than the last one seen (cheap on the free quota).
+  Uploads are found from the PouchDB change feed (`seq` checkpoint), so offline edits survive a
+  closed app. Checkpoints: localStorage `wtp-team-sync-state-v1:<teamId>`.
+- Conflicts (`decide` in teamSyncCore.ts): later `updatedAt` wins; my delete vs their edit → the
+  edit wins; the FIRST sync with a team is a merge (old local deletes are not sent).
+- While Team sync is on, CouchDB sync (own or cloud) skips the songs database (`syncKinds` in
+  couchSync.ts) and restarts itself when Team sync is turned on / off.
+- Not synced: a song's background picture / video (only its id) — other devices show the default.
+- A removed member keeps the songs already in their browser (cannot be taken back).
+- Test without a real project: `VITE_FIREBASE_EMULATOR=1 npm run dev` + Firebase Emulator Suite
+  (auth :9099, firestore :8080; needs Java). `window.__wtpTeamTestLogin(email)` exists only then.
+- Still open: test on the real project (Google popup, rules, quota); a Help article; member
+  self-leave; team rename / delete (today: Firebase Console).
+
+## Phone remote additions (2026-11-17)
+
+- Top-right **Menu** on the remote (`RemoteControl.tsx`): "Gawing screen" → this phone / tablet / TV
+  browser shows the **Projector** (`LiveMainScreen`) or the **Stage** screen (`StageView`) full
+  screen, following the laptop (view only; remembered per tab in sessionStorage `wtp-remote-screen`;
+  Screen Wake Lock). Pictures are the small copies remotes get (480 px) and a video background
+  shows as its poster. Disconnect moved into the menu.
+- **Background ng lyrics** on the remote: one schedule item or the whole schedule. New command
+  `set-bg` `{ scope: "item" | "all", itemId?, bgId | null }` (validated in `remoteServer.ts`); the
+  list of backgrounds travels in the library message (`RemoteLibrary.backgrounds`: built-in CSS +
+  tiny JPEGs of the Media uploads); `schedule[].bg` and `allBg` in the snapshot mark the choice.
+- **Whole-schedule background** ("Buong schedule" in the Media tab, or from the remote): every item
+  now + items added later (`newItemBg = scheduleBg ?? defaultThemeBg` in the Simulator). Only the
+  id is saved (localStorage `wtp.schedule.allBg.v1`, `scheduleStore.ts`). Applying a theme to the
+  whole schedule clears it (undo restores it). PowerPoint slides keep their own picture.
+- "Ask AI" buttons: the Simulator's "Ask in Chat" (tablet / phone header) is gone; the ones in
+  Guides and Hotkeys show only on a wide screen with a mouse (`hidden lg:pointer-fine:flex`).
+
 ## Testing notes
 
 - No test suite. In cloud sessions Docker works: start `dockerd`, run `couchdb:3` with
@@ -159,3 +212,8 @@ Still open / next:
 - 2026-11-17: Gemini AI chat removed (no API key). Chat tab = offline Help in the browser (articles +
   transpose / capo calculator for musicians); works on Firebase Hosting too. "Ask in Chat" icon
   beside "+ New song" removed. `@google/genai` uninstalled.
+- 2026-11-17: Phone remote: "Gawing screen" (Projector / Stage on the remote device) + lyrics
+  background from the remote (item / whole schedule); Media tab "Buong schedule"; Ask AI hidden on
+  tablets / phones. Tested with a real local server + CouchDB-compatible login, two remotes.
+- 2026-11-17: Team sync built (Firebase Auth + Firestore, songs only; CouchDB sync skips songs while
+  it is on). Tested with a stand-in Firestore + the real Auth emulator; not yet on a real project.

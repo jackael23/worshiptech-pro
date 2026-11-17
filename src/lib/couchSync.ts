@@ -11,6 +11,7 @@
  */
 import PouchDB from "pouchdb-browser";
 import { couchSession, getAuth, subscribeAuth, trimUrl } from "./auth";
+import { isTeamSyncOn, subscribeTeamSettings } from "./teamSyncSettings";
 
 // 2026-11-16: 5th database "lineups" (saved lineups, lib/lineupStore.ts). Synced only when its
 // remote name is set — cloud sync sets it; an own CouchDB set up before this has none.
@@ -110,8 +111,12 @@ export const DEFAULT_COUCH: CouchSettings = {
 
 export const remoteName = (s: CouchSettings, kind: DbKind) =>
   kind === "songs" ? s.dbName : kind === "bibles" ? s.bibleDbName : kind === "presentations" ? s.pptDbName : kind === "media" ? s.mediaDbName : s.lineupDbName;
-/** The databases these settings sync (lineups only when it has a remote name). */
-const syncKinds = (s: CouchSettings) => DB_KINDS.filter((k) => k !== "lineups" || !!s.lineupDbName);
+/**
+ * The databases these settings sync (lineups only when it has a remote name).
+ * 2026-11-17: while Team sync (Firebase, lib/teamSync.ts) is on, the songs belong to it and are
+ * left out here — otherwise two clouds would both rewrite the same songs.
+ */
+const syncKinds = (s: CouchSettings) => DB_KINDS.filter((k) => (k !== "lineups" || !!s.lineupDbName) && (k !== "songs" || !isTeamSyncOn()));
 
 export type SyncState = "off" | "connecting" | "active" | "synced" | "login" | "error";
 export interface SyncStatus {
@@ -220,11 +225,22 @@ export function stopSync(): void {
   handlers.clear();
   perKind.clear();
   syncBase = null;
+  running = null;
   publish();
 }
 
 /** CouchDB address the running sync talks to (null = not running). */
 let syncBase: string | null = null;
+/** 2026-11-17: what the running sync was started with, to start it again when Team sync is turned on / off. */
+let running: { settings: CouchSettings; withSongs: boolean } | null = null;
+let teamWatched = false;
+function watchTeamSync(): void {
+  if (teamWatched) return;
+  teamWatched = true;
+  subscribeTeamSettings(() => {
+    if (running && running.withSongs === isTeamSyncOn()) startSync(running.settings);
+  });
+}
 let authWatched = false;
 /** Account logged out (or its session ended) and the sync's server has no session any more → stop, instead of retrying with 401s. */
 function watchAuth(): void {
@@ -309,6 +325,7 @@ export function startSync(s: CouchSettings): void {
   handlers.forEach((h) => h.cancel());
   handlers.clear();
   perKind.clear();
+  running = null;
   const err = validateCouchSettings(s);
   if (err) {
     perKind.set("songs", { state: "error", message: err });
@@ -316,7 +333,9 @@ export function startSync(s: CouchSettings): void {
     return;
   }
   syncBase = baseUrl(s);
+  running = { settings: s, withSongs: !isTeamSyncOn() };
   watchAuth();
+  watchTeamSync();
   const describe = (e: unknown): SyncStatus => {
     const status = (e as { status?: number })?.status;
     if (status === 401) return { state: "login", message: "Kailangang mag-login ulit sa CouchDB." };

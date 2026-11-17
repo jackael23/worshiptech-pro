@@ -34,6 +34,8 @@ const parsePptxForBulk = async (...args: Parameters<typeof import("../lib/pptxSo
 import { resolveSongBackground } from "../lib/songBackground";
 import { loadSongsFromDb, saveSongsDiff, reloadSongs, watchSongs } from "../lib/songsDb";
 import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
+import { TeamSyncPanel } from "./TeamSyncPanel";
+import { autoStartTeamSync } from "../lib/teamSync";
 
 interface SongLibraryProps {
   searchQuery: string;
@@ -118,7 +120,8 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       if (migrated > 0) setNotice({ text: `Nailipat ang ${migrated} kanta sa bagong database (PouchDB).`, tone: "ok" });
     });
     void autoStartCouchSync();
-    // Changes pulled from CouchDB (or another tab) → refresh the list.
+    void autoStartTeamSync(); // 2026-11-17: Team sync (Firebase), when it was left on
+    // Changes pulled from CouchDB / the team (or another tab) → refresh the list.
     const stop = watchSongs(() => {
       reloadSongs()
         .then((songs) => alive && setSongs(songs))
@@ -421,7 +424,9 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
         />
         {/* 2026-11-16 (Sanctuary): desktop — the CouchDB status sits at the end of the footer links, like the mockup */}
         {inFooter && (
-          <div className="ml-auto" data-testid="footer-couch">
+          <div className="ml-auto flex flex-wrap items-start justify-end gap-2" data-testid="footer-couch">
+            {/* 2026-11-17: Team sync (songs, Firebase) beside the CouchDB status */}
+            <TeamSyncPanel />
             <CouchSyncPanel />
           </div>
         )}
@@ -432,7 +437,12 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     <div className="space-y-2">
       {inFooter && footerSlot ? createPortal(tools, footerSlot) : tools}
 
-      {!inFooter && <CouchSyncPanel />}
+      {!inFooter && (
+        <>
+          <TeamSyncPanel />
+          <CouchSyncPanel />
+        </>
+      )}
 
       {!storageOk && (
         <p className="text-xs text-warn-text bg-warn-soft border border-warn/30 rounded-md px-2 py-1.5 flex gap-1.5">

@@ -10,7 +10,7 @@
  *   background picture used to be written again for every slide. Old saves are still read.
  */
 import PouchDB from "pouchdb-browser";
-import type { ScheduleItem, SlideContent } from "../types";
+import type { BackgroundSettings, ScheduleItem, SlideContent } from "../types";
 import { SONG_ID_RE } from "./scheduleSync";
 import { packAssets, assetAttachments, unpackAssets } from "./dataUrlAssets";
 
@@ -18,6 +18,7 @@ const DB_NAME = "wtp-schedule";
 const DOC_ID = "current";
 const ATTACHMENT = "schedule.json";
 const SELECTED_KEY = "wtp.schedule.selected.v1";
+const ALL_BG_KEY = "wtp.schedule.allBg.v1";
 const MAX_ITEMS = 300;
 const TYPES: ScheduleItem["type"][] = ["song", "scripture", "presentation", "media", "alert"];
 
@@ -161,5 +162,39 @@ export function saveSelectedIndex(i: number): void {
     window.localStorage.setItem(SELECTED_KEY, String(i));
   } catch {
     /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------- whole-schedule background (2026-11-17)
+
+/**
+ * 2026-11-17 (Jarvis): "Buong schedule" background — one background for every item, also for items
+ * added later. Only its id is remembered ("bg-…" built-in, "img-…" / "vid-…" Media upload) plus
+ * dim / fit / blur; the picture itself stays in the media database.
+ */
+export interface ScheduleBgChoice {
+  id: string;
+  bgSettings: BackgroundSettings;
+}
+const ALL_BG_ID_RE = /^(bg|img|vid)-[\w-]{1,70}$/;
+
+export function loadScheduleBg(): ScheduleBgChoice | null {
+  try {
+    const o = JSON.parse(window.localStorage.getItem(ALL_BG_KEY) || "null") as { id?: unknown; bgSettings?: Record<string, unknown> } | null;
+    if (!o || typeof o.id !== "string" || !ALL_BG_ID_RE.test(o.id)) return null;
+    const b = o.bgSettings || {};
+    const num = (x: unknown, min: number, max: number) => (typeof x === "number" && isFinite(x) ? Math.min(max, Math.max(min, x)) : min);
+    return { id: o.id, bgSettings: { dim: num(b.dim, 0, 0.7), blur: Math.round(num(b.blur, 0, 20)), fit: b.fit === "contain" ? "contain" : "cover" } };
+  } catch {
+    return null;
+  }
+}
+
+export function saveScheduleBg(c: ScheduleBgChoice | null): void {
+  try {
+    if (c) window.localStorage.setItem(ALL_BG_KEY, JSON.stringify(c));
+    else window.localStorage.removeItem(ALL_BG_KEY);
+  } catch {
+    /* ignore: stays for this page only */
   }
 }

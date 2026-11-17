@@ -1,0 +1,87 @@
+rules_version = '2';
+
+// 2026-11-17 (Jarvis): Team sync (src/lib/teamSync.ts). Songs only.
+// teams/{teamId}        = { name, ownerUid, ownerEmail, memberEmails[], createdAt }  (teamId = owner's uid)
+// teams/{teamId}/songs/ = one doc per song; a deleted song stays as an empty doc with deleted: true
+// Only people whose Google email is in memberEmails can read or write a team's songs.
+// Everything else in the database is closed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    function isMember(teamId) {
+      return signedIn()
+        && email() in get(/databases/$(database)/documents/teams/$(teamId)).data.memberEmails;
+    }
+
+    function validTeam(d) {
+      return d.keys().hasOnly(['name', 'ownerUid', 'ownerEmail', 'memberEmails', 'createdAt'])
+        && d.keys().hasAll(['name', 'ownerUid', 'ownerEmail', 'memberEmails', 'createdAt'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 60
+        && d.ownerUid is string
+        && d.ownerEmail is string && d.ownerEmail.size() <= 254
+        && d.memberEmails is list && d.memberEmails.size() >= 1 && d.memberEmails.size() <= 30
+        && d.ownerEmail in d.memberEmails
+        && d.createdAt is string && d.createdAt.size() <= 40;
+    }
+
+    function validSong(d) {
+      return d.keys().hasOnly(['title', 'author', 'key', 'ccli', 'copyright', 'lyrics', 'bgId', 'bgSettings',
+                               'createdAt', 'updatedAt', 'deleted', 'by', 'serverAt'])
+        && d.keys().hasAll(['title', 'author', 'key', 'ccli', 'lyrics', 'createdAt', 'updatedAt', 'deleted', 'by', 'serverAt'])
+        && d.title is string && d.title.size() <= 120
+        && d.author is string && d.author.size() <= 80
+        && d.key is string && d.key.size() <= 8
+        && d.ccli is string && d.ccli.size() <= 80
+        && d.lyrics is string && d.lyrics.size() <= 10000
+        && (!('copyright' in d) || (d.copyright is string && d.copyright.size() <= 300))
+        && (!('bgId' in d) || (d.bgId is string && d.bgId.size() <= 80))
+        && (!('bgSettings' in d) || (d.bgSettings is map && d.bgSettings.size() <= 3))
+        && d.createdAt is string && d.createdAt.size() <= 40
+        && d.updatedAt is string && d.updatedAt.size() <= 40
+        && d.deleted is bool
+        && d.by == email()
+        && d.serverAt == request.time;
+    }
+
+    match /teams/{teamId} {
+      // Members see their team (this also allows the "teams I belong to" query).
+      allow read: if signedIn() && email() in resource.data.memberEmails;
+
+      // One team per account: the id must be the creator's own uid.
+      allow create: if signedIn()
+        && teamId == request.auth.uid
+        && validTeam(request.resource.data)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == email();
+
+      // Only the owner changes the name / members; the owner fields never change.
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && validTeam(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if false;
+
+      match /songs/{songId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && songId.matches('^user-[A-Za-z0-9_-]{1,80}$')
+          && validSong(request.resource.data);
+        // Never really deleted: a delete is a write with deleted: true, so offline laptops hear about it.
+        allow delete: if false;
+      }
+    }
+  }
+}

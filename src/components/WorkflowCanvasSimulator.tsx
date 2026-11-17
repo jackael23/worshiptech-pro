@@ -13,7 +13,6 @@ import {
   Search,
   AlertTriangle,
   Sliders,
-  Sparkles,
   Send,
   Layers,
   MonitorUp,
@@ -42,8 +41,8 @@ import {
   BackgroundSettings,
   SlideContent,
 } from "../types";
-import { INITIAL_SCHEDULE, SAMPLE_SONGS } from "../data/easyworshipData";
-import { getCachedSchedule, loadSchedule, saveSchedule, loadSelectedIndex, saveSelectedIndex } from "../lib/scheduleStore";
+import { INITIAL_SCHEDULE, SAMPLE_SONGS, SAMPLE_BACKGROUNDS } from "../data/easyworshipData";
+import { getCachedSchedule, loadSchedule, saveSchedule, loadSelectedIndex, saveSelectedIndex, loadScheduleBg, saveScheduleBg } from "../lib/scheduleStore";
 import { SongLibrary } from "./SongLibrary";
 import { BibleLibrary, Passage } from "./BibleLibrary";
 import { PresentationLibrary } from "./PresentationLibrary";
@@ -52,15 +51,15 @@ import { LiveMainScreen } from "./LiveScreen";
 import { StageView, loadStagePrefs, STAGE_PREFS_KEY, StagePrefs } from "./StageScreen";
 import { openOutputWindow, canUseSecondScreen, listScreens, loadScreenChoice, ScreenChoice, OutputKind } from "../lib/liveChannel";
 import type { StoredPresentation } from "../lib/presentationStore";
-import { useRemoteHost, scheduleForRemote, RemoteCmd } from "../lib/remoteLink";
+import { useRemoteHost, scheduleForRemote, tinyPicture, RemoteCmd, RemoteBackground } from "../lib/remoteLink";
 import { openAccount, useAuth } from "../lib/auth";
 import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
 import { TextStyleEditor } from "./TextStyleEditor";
-import { MediaLibrary } from "./MediaLibrary";
+import { MediaLibrary, DEFAULT_BG_SETTINGS } from "./MediaLibrary";
 import { ThemePicker, ThemeScope } from "./ThemePicker";
 import { ItemBg, PresentationTheme, ThemeStore, findTheme, loadThemeStore, resolveThemeBg, saveThemeStore, themeFromItem } from "../lib/presentationThemes";
-import { isVideoId } from "../lib/mediaStore";
+import { isVideoId, listMedia, watchMedia } from "../lib/mediaStore";
 import { useLogoFrame, withLogo } from "../lib/logoStore";
 import { LogoSettingsModal } from "./LogoSettingsModal";
 import { LineupsModal } from "./LineupsModal";
@@ -90,7 +89,8 @@ interface WorkflowCanvasSimulatorProps {
   version: EasyWorshipVersion;
   liveState: LiveState;
   setLiveState: React.Dispatch<React.SetStateAction<LiveState>>;
-  onAskAssistant: (query: string) => void;
+  /** 2026-11-17: no longer used here (the "Ask in Chat" button was removed); kept so App.tsx stays as it is. */
+  onAskAssistant?: (query: string) => void;
   /** 2026-10-28: number of projector output windows connected (?output=main). */
   outputCount?: number;
   /** 2026-11-08: number of Stage screens connected (?output=stage). */
@@ -101,7 +101,6 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   version,
   liveState,
   setLiveState,
-  onAskAssistant,
   outputCount = 0,
   stageCount = 0,
 }) => {
@@ -481,6 +480,32 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     setScheduleItems(items);
     refreshLiveBackground(items);
   };
+  // 2026-11-17 (Jarvis): "Buong schedule" background (Media tab + phone remote) — every item gets it
+  // now, and items added later too (see newItemBg). PowerPoint slides keep their own picture
+  // (slide.background wins). null = remove the background from every item.
+  const handleAllBackground = (bg: ItemBg | null, id: string | null) => {
+    const items = scheduleRef.current.map((i) => (bg ? { ...i, ...bgFields(bg) } : { ...i, background: undefined, bgMediaId: undefined }));
+    setScheduleItems(items);
+    refreshLiveBackground(items);
+    const next = bg && id ? { ...bg, id } : null;
+    setScheduleBg(next);
+    saveScheduleBg(next ? { id: next.id, bgSettings: next.bgSettings } : null);
+  };
+  /** Same, from a CSS background (+ the Media upload it came from); the built-in ones are found by their CSS. */
+  const handleAllBackgroundCss = (css: string | null, mediaId?: string) => {
+    if (!css) return handleAllBackground(null, null);
+    const id = mediaId || SAMPLE_BACKGROUNDS.find((b) => b.css === css)?.id || null;
+    handleAllBackground({ background: css, bgMediaId: mediaId, bgSettings: scheduleBgRef.current?.bgSettings ?? DEFAULT_BG_SETTINGS }, id);
+  };
+  const handleAllBgSettings = (next: BackgroundSettings) => {
+    const items = scheduleRef.current.map((i) => ({ ...i, bgSettings: next }));
+    setScheduleItems(items);
+    refreshLiveBackground(items);
+    const cur = scheduleBgRef.current;
+    if (!cur) return;
+    setScheduleBg({ ...cur, bgSettings: next });
+    saveScheduleBg({ id: cur.id, bgSettings: next });
+  };
   const handleItemStyle = (itemId: string, next: TextStyle | null) => {
     const items = scheduleItems.map((i) => (i.id === itemId ? { ...i, textStyle: next } : i));
     setScheduleItems(items);
@@ -495,7 +520,25 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   /** Background of the default theme, for new songs / verses (null = keep the old behavior). */
   const [defaultThemeBg, setDefaultThemeBg] = useState<ItemBg | null>(null);
-  defaultThemeBgRef.current = defaultThemeBg;
+  // 2026-11-17: the whole-schedule background (picked in the Media tab or on the phone). Only its id
+  // is saved (lib/scheduleStore.ts); the picture is read from the media database when the page opens.
+  const [scheduleBg, setScheduleBg] = useState<(ItemBg & { id: string }) | null>(null);
+  const scheduleBgRef = useRef(scheduleBg);
+  scheduleBgRef.current = scheduleBg;
+  useEffect(() => {
+    const saved = loadScheduleBg();
+    if (!saved) return;
+    let alive = true;
+    resolveSongBackground(saved.id).then((r) => {
+      if (alive && r.css) setScheduleBg({ id: saved.id, background: r.css, bgMediaId: r.mediaId, bgSettings: saved.bgSettings });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  /** Background for NEW items: the whole-schedule one when set, else the default theme's. */
+  const newItemBg = scheduleBg ?? defaultThemeBg;
+  defaultThemeBgRef.current = newItemBg;
   useEffect(() => {
     const t = findTheme(themeStore, themeStore.defaultId);
     if (!t) return setDefaultThemeBg(null);
@@ -505,7 +548,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       alive = false;
     };
   }, [themeStore]);
-  const themeUndoRef = useRef<{ items: ScheduleItem[]; global: TextStyle; defaultId: string | null } | null>(null);
+  const themeUndoRef = useRef<{ items: ScheduleItem[]; global: TextStyle; defaultId: string | null; allBg: (ItemBg & { id: string }) | null } | null>(null);
   const [canUndoTheme, setCanUndoTheme] = useState(false);
   const bgFields = (bg: ItemBg) => ({ background: bg.background, bgMediaId: bg.bgMediaId, bgSettings: bg.bgSettings });
 
@@ -522,7 +565,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       setCanUndoTheme(false);
       return null;
     }
-    themeUndoRef.current = { items: scheduleItems, global: globalStyle, defaultId: themeStore.defaultId };
+    themeUndoRef.current = { items: scheduleItems, global: globalStyle, defaultId: themeStore.defaultId, allBg: scheduleBg };
+    // 2026-11-17: a theme for the whole schedule replaces the "Buong schedule" background
+    setScheduleBg(null);
+    saveScheduleBg(null);
     const nextGlobal = { ...theme.textStyle };
     // every item takes the theme; PowerPoint slides keep their own background (slide.background wins)
     const items = scheduleItems.map((i) => ({ ...i, textStyle: null, ...bgFields(bg) }));
@@ -546,6 +592,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     refreshLiveStyle(u.global, u.items);
     refreshLiveBackground(u.items);
     updateThemeStore({ ...themeStore, defaultId: u.defaultId });
+    setScheduleBg(u.allBg);
+    saveScheduleBg(u.allBg ? { id: u.allBg.id, bgSettings: u.allBg.bgSettings } : null);
   };
   const handleSaveTheme = (name: string) => {
     const t = themeFromItem(name, styleFor(currentScheduleItem), currentScheduleItem);
@@ -566,7 +614,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       activeSlideIndex: 0,
       background: song.defaultBackground,
       // 2026-11-07: default presentation theme's background, unless the My Song has its own
-      ...(defaultThemeBg && !song.bgMediaId && !song.bgId ? bgFields(defaultThemeBg) : {}),
+      ...(newItemBg && !song.bgMediaId && !song.bgId ? bgFields(newItemBg) : {}),
       // 2026-11-06: My Song's own background (picture / video upload + dim / fit / blur)
       ...(song.bgMediaId ? { bgMediaId: song.bgMediaId } : {}),
       ...(song.bgId && song.bgSettings ? { bgSettings: song.bgSettings } : {}),
@@ -628,8 +676,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       slides: p.slides,
       activeSlideIndex: 0,
       background: "linear-gradient(135deg, #0284c7 0%, #082f49 100%)",
-      // 2026-11-07: default presentation theme's background
-      ...(defaultThemeBg ? bgFields(defaultThemeBg) : {}),
+      // 2026-11-07: default presentation theme's background (2026-11-17: or the whole-schedule one)
+      ...(newItemBg ? bgFields(newItemBg) : {}),
     };
     setScheduleItems((prev) => [...prev, newItem]);
     setSelectedScheduleIndex(scheduleItems.length);
@@ -778,8 +826,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   // ---------- 2026-11-08 (Mira): phone changes the schedule + Bible (Library tab) ----------
   /** Latest handlers, for commands that finish after an await (Bible loads from the database). */
-  const latest = useRef({ handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt });
-  latest.current = { handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt };
+  const latest = useRef({ handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt, handleItemBackground, handleAllBackgroundCss });
+  latest.current = { handleAddPassage, handleLivePassage, handleAddSongToSchedule, goLiveAt, handleItemBackground, handleAllBackgroundCss };
   const bibleCache = useRef<WtpBible | null>(null);
   const loadBibleFor = async (id: string): Promise<WtpBible | null> => {
     if (bibleCache.current?.id === id) return bibleCache.current;
@@ -836,6 +884,17 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
           else latest.current.handleAddPassage(p);
         });
         return true;
+      // 2026-11-17 (Jarvis): lyrics background picked on the phone — one item or the whole schedule
+      case "set-bg": {
+        const apply = (css: string | null, mediaId?: string) => {
+          if (cmd.scope === "all") return latest.current.handleAllBackgroundCss(css, mediaId);
+          if (cmd.itemId && scheduleRef.current.some((i) => i.id === cmd.itemId)) latest.current.handleItemBackground(cmd.itemId, css, mediaId);
+        };
+        if (!cmd.bgId) apply(null);
+        // a picture / video that is not in this browser (deleted, not synced yet) changes nothing
+        else resolveSongBackground(cmd.bgId).then((r) => r.css && apply(r.css, r.mediaId));
+        return true;
+      }
       default:
         return false;
     }
@@ -846,6 +905,29 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   const remote = useRemoteHost((cmd) => {
     if (!handleRemoteScheduleCmd(cmd)) handleRemoteCmd(cmd);
   }, remoteAllowed);
+  // 2026-11-17: Media uploads for the phone's Background picker — a tiny JPEG of each (the files stay here)
+  const [remoteUploads, setRemoteUploads] = useState<RemoteBackground[]>([]);
+  useEffect(() => {
+    if (remote.availability !== "ready") return;
+    let alive = true;
+    const load = async () => {
+      const items = await listMedia()
+        .then((r) => r.items)
+        .catch(() => []);
+      const out: RemoteBackground[] = [];
+      for (const m of items) {
+        const thumb = m.thumbUrl ? await tinyPicture(m.thumbUrl) : "";
+        if (thumb) out.push({ id: m.id, name: m.name.slice(0, 60), kind: m.kind, thumb });
+      }
+      if (alive) setRemoteUploads(out);
+    };
+    void load();
+    const stop = watchMedia(() => void load());
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [remote.availability]);
   // Library for the phones: song titles (Hymns + My Songs, no lyrics) + imported Bibles
   const [bibleList, setBibleList] = useState<BibleMeta[]>([]);
   useEffect(() => {
@@ -879,9 +961,11 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     remote.publishLibrary({
       songs: [...mine, ...SAMPLE_SONGS.map((s) => toEntry(s, false))].filter((s) => s.slides > 0),
       bibles: bibleList.map((b) => ({ id: b.id, name: b.name, shortName: b.shortName, language: b.language })),
+      // 2026-11-17: backgrounds the phone can pick (built-in + Media uploads as tiny pictures)
+      backgrounds: [...SAMPLE_BACKGROUNDS.map((b): RemoteBackground => ({ id: b.id, name: b.name, kind: "built-in", css: b.css })), ...remoteUploads],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remote.availability, remote.publishLibrary, songsTick, bibleList]);
+  }, [remote.availability, remote.publishLibrary, songsTick, bibleList, remoteUploads]);
   // 2026-10-29: Output toolbar panels (one open at a time; X / Esc / same button closes)
   const [tool, setTool] = useState<null | "projector" | "phone" | "style" | "theme">(null);
   // 2026-11-06: custom Logo screen (picture / video + title) — merged into what the screens show
@@ -916,9 +1000,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         : null,
       selected: { itemId: currentScheduleItem?.id ?? null, slide: selectedSlideIndex },
       schedule: scheduleForRemote(scheduleItems),
+      allBg: scheduleBg?.id ?? null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remote.availability, remote.publish, liveState, logo, scheduleItems, currentScheduleItem?.id, selectedSlideIndex]);
+  }, [remote.availability, remote.publish, liveState, logo, scheduleItems, currentScheduleItem?.id, selectedSlideIndex, scheduleBg?.id]);
 
   // Keyboard shortcut simulation handler
   useEffect(() => {
@@ -1032,11 +1117,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         </div>
         <div className="flex shrink-0 items-center gap-2 lg:hidden">
           <span className="hidden font-mono text-xs tabular-nums text-fg-subtle sm:inline">{simulatedTime}</span>
-          <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="btn btn-ghost tap-target">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            <span className="hidden sm:inline">Ask in Chat</span>
-            <span className="sm:hidden">Chat</span>
-          </button>
+          {/* 2026-11-17 (Jarvis): the "Ask in Chat" button (tablet / phone only) was removed — Jack: no Ask AI there. The Chat tab is in the bottom bar. */}
         </div>
       </div>
 
@@ -1161,8 +1242,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               <MediaLibrary
                 searchQuery={searchQuery}
                 item={currentScheduleItem}
-                onApply={(css, mediaId) => currentScheduleItem && handleItemBackground(currentScheduleItem.id, css, mediaId)}
-                onSettings={(next) => currentScheduleItem && handleItemBgSettings(currentScheduleItem.id, next)}
+                itemCount={scheduleItems.length}
+                allBg={scheduleBg}
+                onApply={(css, mediaId, scope) => (scope === "all" ? handleAllBackgroundCss(css, mediaId) : currentScheduleItem && handleItemBackground(currentScheduleItem.id, css, mediaId))}
+                onSettings={(next, scope) => (scope === "all" ? handleAllBgSettings(next) : currentScheduleItem && handleItemBgSettings(currentScheduleItem.id, next))}
               />
             )}
           </div>

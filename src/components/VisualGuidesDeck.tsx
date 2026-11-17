@@ -126,7 +126,9 @@ export const VisualGuidesDeck: React.FC<VisualGuidesDeckProps> = ({
                       : `Explain further in detail: ${currentGuide.title}`
                   )
                 }
-                className="bg-surface hover:bg-surface-2 text-fg border border-line text-xs font-semibold px-3 py-2 min-h-[44px] lg:min-h-0 rounded-lg flex items-center gap-1.5 transition-all shadow-xs"
+                // 2026-11-17 (Jarvis): no "Ask AI" on tablets / phones (Jack) — shown only on a wide screen with a mouse
+                className="bg-surface hover:bg-surface-2 text-fg border border-line text-xs font-semibold px-3 py-2 min-h-[44px] lg:min-h-0 rounded-lg hidden lg:pointer-fine:flex items-center gap-1.5 transition-all shadow-xs"
+                data-testid="ask-ai-guides"
               >
                 <Sparkles className="w-4 h-4 text-accent-text" />
                 <span>Ask AI Details</span>

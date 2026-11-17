@@ -26,6 +26,9 @@
  * 2026-11-08 (Mira): phones can change the schedule (add song / remove / move) and use the Bible.
  *    POST /api/remote/host-library  song titles + Bibles (no lyrics) → phones; kept for phones that connect later
  *    POST /api/remote/host-lookup   answer to a phone's Bible lookup → phones (they match it by reqId)
+ *
+ * 2026-11-17 (Jarvis): command "set-bg" — a phone picks the lyrics background of one schedule item
+ *    or of the whole schedule (the list of backgrounds travels inside host-library).
  */
 import express, { Express, Request, Response } from "express";
 import crypto from "crypto";
@@ -45,7 +48,7 @@ const RL = {
   HEARTBEAT_MS: 15000,
 };
 
-const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "stage-msg", "add-song", "remove", "move", "bible-lookup", "add-verses"] as const;
+const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "stage-msg", "add-song", "remove", "move", "bible-lookup", "add-verses", "set-bg"] as const;
 type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
@@ -55,8 +58,11 @@ type RemoteCmd =
   | { type: "remove"; itemId: string }
   | { type: "move"; itemId: string; dir: "up" | "down" }
   | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
-  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean };
+  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean }
+  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null };
 
+/** 2026-11-17: background ids — built-in "bg-…" or a Media upload "img-…" / "vid-…" (same rule as SONG_BG_ID_RE in the app). */
+const BG_ID_RE = /^(bg|img|vid)-[\w-]{1,70}$/;
 /** 2026-11-08: ids from the app (songs "song-1" / "user-…", schedule "sched-…", Bibles "KJV"). */
 const ID_RE = /^[\w.:-]{1,100}$/;
 const intIn = (v: unknown, min: number, max: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : null);
@@ -140,6 +146,14 @@ function cleanCmd(raw: unknown): RemoteCmd | null {
     const verses = c.verses.map((v) => intIn(v, 1, 200));
     if (verses.some((v) => v === null)) return null;
     return { type, bibleId: c.bibleId, book, chapter, verses: verses as number[], live: c.live === true };
+  }
+  // 2026-11-17: lyrics background from the phone (null = remove it)
+  if (type === "set-bg") {
+    const bgId = c.bgId === null ? null : typeof c.bgId === "string" && BG_ID_RE.test(c.bgId) ? c.bgId : undefined;
+    if (bgId === undefined) return null;
+    if (c.scope === "all") return { type, scope: "all", bgId };
+    if (c.scope !== "item" || typeof c.itemId !== "string" || !ID_RE.test(c.itemId)) return null;
+    return { type, scope: "item", itemId: c.itemId, bgId };
   }
   return { type } as RemoteCmd;
 }

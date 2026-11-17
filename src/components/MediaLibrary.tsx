@@ -5,6 +5,8 @@
  *  - Per item: Dim (0–70%), Fill / Fit, Blur, Remove background.
  *  - Built-in offline backgrounds (CSS, no internet needed).
  * 2026-11-05 (Mira): + videos (MP4/WebM, muted loop) and CouchDB sync of uploads ("wtp_media").
+ * 2026-11-17 (Jarvis): "Para sa" switch — Itong item / Buong schedule. Buong schedule = every item
+ *   now and the ones added later (the Simulator keeps it; the phone remote can set it too).
  */
 import React, { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Trash2, AlertTriangle, X, Check, Play } from "lucide-react";
@@ -15,15 +17,25 @@ import { CouchSyncPanel, autoStartCouchSync } from "./CouchSyncPanel";
 
 export const DEFAULT_BG_SETTINGS: BackgroundSettings = { dim: 0, fit: "cover", blur: 0 };
 
+export type BgScope = "item" | "all";
+
 interface Props {
   searchQuery: string;
   item?: ScheduleItem;
-  /** css = new background of the selected item (null = remove it); mediaId = the upload it came from. */
-  onApply: (css: string | null, mediaId?: string) => void;
-  onSettings: (next: BackgroundSettings) => void;
+  /** 2026-11-17: how many items the schedule has (shown beside "Buong schedule"). */
+  itemCount?: number;
+  /** 2026-11-17: the whole-schedule background now (id = "bg-…" built-in or the upload's id); null = none. */
+  allBg?: { id: string; bgSettings: BackgroundSettings } | null;
+  /** css = new background (null = remove it); mediaId = the upload it came from; scope = the selected item or every item. */
+  onApply: (css: string | null, mediaId: string | undefined, scope: BgScope) => void;
+  onSettings: (next: BackgroundSettings, scope: BgScope) => void;
 }
 
-export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSettings }) => {
+export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, itemCount = 0, allBg = null, onApply, onSettings }) => {
+  const [scope, setScope] = useState<BgScope>("item");
+  const all = scope === "all";
+  /** Something to apply to: every item, or the selected one. */
+  const canApply = all || !!item;
   const [images, setImages] = useState<MediaItem[]>([]);
   const [persistent, setPersistent] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -89,21 +101,22 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
 
   // 2026-11-05: the picture / poster is read from the database only when it is used.
   const handleUse = async (m: MediaItem) => {
-    if (!item) return;
+    if (!canApply) return;
     setBusy("Inilalagay ang background…");
     const css = await backgroundCss(m.id);
     setBusy(null);
     if (!css) return setNotice({ text: `Hindi pa buo ang "${m.name}" sa browser na ito (nagsi-sync pa?). Subukan ulit mamaya.`, tone: "warn" });
-    onApply(css, m.id);
+    onApply(css, m.id, scope);
   };
 
   const q = searchQuery.trim().toLowerCase();
   const shownImages = q ? images.filter((m) => m.name.toLowerCase().includes(q)) : images;
   const shownSamples = q ? SAMPLE_BACKGROUNDS.filter((b) => b.name.toLowerCase().includes(q)) : SAMPLE_BACKGROUNDS;
   const current = item?.background || "";
-  const st = item?.bgSettings || DEFAULT_BG_SETTINGS;
-  const set = (patch: Partial<BackgroundSettings>) => onSettings({ ...st, ...patch });
+  const st = (all ? allBg?.bgSettings : item?.bgSettings) || DEFAULT_BG_SETTINGS;
+  const set = (patch: Partial<BackgroundSettings>) => onSettings({ ...st, ...patch }, scope);
   const itemName = item ? item.title.replace(/^\d+\.\s*/, "") : "";
+  const targetName = all ? "buong schedule" : itemName;
 
   return (
     <div className="space-y-3">
@@ -137,12 +150,29 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
 
       {/* target item + settings */}
       <div className="space-y-2.5 rounded-lg border border-line bg-surface-2 p-2.5" aria-label="Background ng item">
+        {/* 2026-11-17: one item, or every item (now + added later) */}
+        <div className="seg grid grid-cols-2" role="group" aria-label="Para saan ang background">
+          <button onClick={() => setScope("item")} aria-pressed={!all} className="seg-item" data-testid="bg-scope-item">
+            Itong item
+          </button>
+          <button onClick={() => setScope("all")} aria-pressed={all} className="seg-item" title="Lahat ng item ngayon, pati ang mga idadagdag pa" data-testid="bg-scope-all">
+            Buong schedule
+          </button>
+        </div>
         <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="min-w-0 truncate text-fg-muted">
-            Para sa: <span className="font-medium text-fg">{itemName || "— pumili ng item sa Schedule —"}</span>
+          <span className="min-w-0 truncate text-fg-muted" data-testid="bg-target" title={all ? "Lahat ng item sa schedule ngayon, pati ang mga idadagdag pa" : undefined}>
+            Para sa:{" "}
+            <span className="font-medium text-fg">
+              {all ? `Lahat ng ${itemCount} item + mga bago` : itemName || "— pumili ng item sa Schedule —"}
+            </span>
           </span>
-          {item && current && (
-            <button onClick={() => onApply(null)} className="btn btn-ghost btn-sm shrink-0" title="Default na background na lang">
+          {(all ? itemCount > 0 || !!allBg : !!item && !!current) && (
+            <button
+              onClick={() => onApply(null, undefined, scope)}
+              className="btn btn-ghost btn-sm shrink-0"
+              title={all ? "Alisin ang background ng lahat ng item" : "Default na background na lang"}
+              data-testid="bg-remove"
+            >
               <X className="h-3.5 w-3.5" /> Alisin
             </button>
           )}
@@ -151,21 +181,21 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
           <label htmlFor="bg-dim" className="eyebrow">
             Dim
           </label>
-          <input id="bg-dim" type="range" min={0} max={70} step={5} value={Math.round(st.dim * 100)} disabled={!item} onChange={(e) => set({ dim: Number(e.target.value) / 100 })} className="h-7 accent-[var(--c-accent)]" />
+          <input id="bg-dim" type="range" min={0} max={70} step={5} value={Math.round(st.dim * 100)} disabled={!canApply} onChange={(e) => set({ dim: Number(e.target.value) / 100 })} className="h-7 accent-[var(--c-accent)]" />
           <span className="text-right font-mono tabular-nums text-fg" data-testid="bg-dim-value">
             {Math.round(st.dim * 100)}%
           </span>
           <label htmlFor="bg-blur" className="eyebrow">
             Blur
           </label>
-          <input id="bg-blur" type="range" min={0} max={20} step={1} value={st.blur} disabled={!item} onChange={(e) => set({ blur: Number(e.target.value) })} className="h-7 accent-[var(--c-accent)]" />
+          <input id="bg-blur" type="range" min={0} max={20} step={1} value={st.blur} disabled={!canApply} onChange={(e) => set({ blur: Number(e.target.value) })} className="h-7 accent-[var(--c-accent)]" />
           <span className="text-right font-mono tabular-nums text-fg">{st.blur}</span>
           <span className="eyebrow">Fit</span>
           <div className="seg col-span-2 grid grid-cols-2" role="group" aria-label="Fit">
-            <button onClick={() => set({ fit: "cover" })} disabled={!item} aria-pressed={st.fit === "cover"} className="seg-item" title="Puno ang screen (puwedeng maputol ang gilid)">
+            <button onClick={() => set({ fit: "cover" })} disabled={!canApply} aria-pressed={st.fit === "cover"} className="seg-item" title="Puno ang screen (puwedeng maputol ang gilid)">
               Fill
             </button>
-            <button onClick={() => set({ fit: "contain" })} disabled={!item} aria-pressed={st.fit === "contain"} className="seg-item" title="Buong larawan (may itim sa gilid)">
+            <button onClick={() => set({ fit: "contain" })} disabled={!canApply} aria-pressed={st.fit === "contain"} className="seg-item" title="Buong larawan (may itim sa gilid)">
               Fit
             </button>
           </div>
@@ -186,14 +216,14 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {shownImages.map((m) => {
-              const selected = !!item?.bgMediaId && item.bgMediaId === m.id && !!current;
+              const selected = all ? allBg?.id === m.id : !!item?.bgMediaId && item.bgMediaId === m.id && !!current;
               return (
                 <div key={m.id} className={`group relative overflow-hidden rounded-lg border bg-surface-2 ${selected ? "border-accent ring-1 ring-accent" : "border-line"}`}>
                   <button
                     onClick={() => void handleUse(m)}
-                    disabled={!item}
+                    disabled={!canApply}
                     className="block w-full text-left disabled:cursor-not-allowed"
-                    title={item ? `Gawing background ng "${itemName}"` : "Pumili muna ng item sa Schedule"}
+                    title={canApply ? `Gawing background ng ${all ? targetName : `"${itemName}"`}` : "Pumili muna ng item sa Schedule"}
                     aria-label={`Background: ${m.name}${m.kind === "video" ? " (video)" : ""}`}
                     aria-pressed={selected}
                     data-media-kind={m.kind}
@@ -246,12 +276,12 @@ export const MediaLibrary: React.FC<Props> = ({ searchQuery, item, onApply, onSe
           <div className="eyebrow mb-1.5">Kasama sa app (offline)</div>
           <div className="grid grid-cols-3 gap-2">
             {shownSamples.map((b) => {
-              const selected = current === b.css;
+              const selected = all ? allBg?.id === b.id : current === b.css;
               return (
                 <button
                   key={b.id}
-                  onClick={() => item && onApply(b.css)}
-                  disabled={!item}
+                  onClick={() => canApply && onApply(b.css, undefined, scope)}
+                  disabled={!canApply}
                   aria-label={`Background: ${b.name}`}
                   aria-pressed={selected}
                   className={`overflow-hidden rounded-lg border text-left disabled:cursor-not-allowed ${selected ? "border-accent ring-1 ring-accent" : "border-line hover:border-line-strong"}`}

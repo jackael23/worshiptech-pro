@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LiveState, ScheduleItem, ResolvedTextStyle, BackgroundSettings } from "../types";
 import type { BibleLookupResult } from "./bibleLookup";
+import { SAMPLE_BACKGROUNDS } from "../data/easyworshipData";
 
 export type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
@@ -18,12 +19,25 @@ export type RemoteCmd =
   | { type: "remove"; itemId: string }
   | { type: "move"; itemId: string; dir: "up" | "down" }
   | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
-  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean };
+  | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean }
+  // 2026-11-17 (Jarvis): lyrics background of one schedule item or of the whole schedule (bgId null = remove)
+  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null };
+
+/** 2026-11-17: one background the phone can pick — built-in ("bg-…", drawn from `css`) or a Media upload (tiny `thumb`). */
+export interface RemoteBackground {
+  id: string;
+  name: string;
+  kind: "built-in" | "image" | "video";
+  css?: string;
+  thumb?: string;
+}
 
 /** 2026-11-08: song titles + installed Bibles for the phone's Library tab (no lyrics — they stay on the laptop). */
 export interface RemoteLibrary {
   songs: { id: string; title: string; author?: string; key?: string; chords: boolean; mine: boolean; slides: number }[];
   bibles: { id: string; name: string; shortName: string; language: string }[];
+  /** 2026-11-17: backgrounds for the phone's Background picker (missing = an older laptop page). */
+  backgrounds?: RemoteBackground[];
 }
 export type { BibleLookupResult };
 
@@ -38,7 +52,10 @@ export interface RemoteSnapshot {
   /** Next slide of the item on air (for the phone's "Next" preview). */
   next?: { label: string; text: string; image?: string; background?: string; textColor?: string; textStyle?: ResolvedTextStyle; bgSettings?: BackgroundSettings } | null;
   selected: { itemId: string | null; slide: number };
-  schedule: { id: string; title: string; type: ScheduleItem["type"]; slides: RemoteSlide[] }[];
+  /** `bg` (2026-11-17) = id of the item's background when it is one from the picker list. */
+  schedule: { id: string; title: string; type: ScheduleItem["type"]; slides: RemoteSlide[]; bg?: string }[];
+  /** 2026-11-17: id of the whole-schedule background (null = none). */
+  allBg?: string | null;
 }
 
 // ---------- pictures: phones get small copies (PowerPoint slides can be several MB) ----------
@@ -93,7 +110,49 @@ export function scheduleForRemote(items: ScheduleItem[]): RemoteSnapshot["schedu
     title: it.title.replace(/^\d+\.\s*/, ""),
     type: it.type,
     slides: it.slides.map((s) => ({ label: s.label, text: (s.text || "").slice(0, 160), hasImage: !!s.image || undefined })),
+    bg: backgroundIdOf(it),
   }));
+}
+
+/** 2026-11-17: which picker background an item uses — a Media upload's id, or the built-in one with the same CSS. */
+export function backgroundIdOf(it: Pick<ScheduleItem, "background" | "bgMediaId">): string | undefined {
+  if (!it.background) return undefined;
+  return it.bgMediaId || SAMPLE_BACKGROUNDS.find((b) => b.css === it.background)?.id;
+}
+
+/** 2026-11-17: a very small JPEG (data URL) of a picture, for the phone's background picker. "" = could not read it. */
+const tinyCache = new Map<string, Promise<string>>();
+export function tinyPicture(src: string, w = 192, h = 108): Promise<string> {
+  if (typeof document === "undefined") return Promise.resolve("");
+  const hit = tinyCache.get(src);
+  if (hit) return hit;
+  const p = new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        if (!ctx) return resolve("");
+        // "cover": fill the tile, cut what does not fit
+        const s = Math.max(w / (img.naturalWidth || w), h / (img.naturalHeight || h));
+        const dw = (img.naturalWidth || w) * s;
+        const dh = (img.naturalHeight || h) * s;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+        resolve(c.toDataURL("image/jpeg", 0.6));
+      } catch {
+        resolve("");
+      }
+    };
+    img.onerror = () => resolve("");
+    img.src = src;
+  });
+  if (tinyCache.size > 200) tinyCache.delete(tinyCache.keys().next().value as string);
+  tinyCache.set(src, p);
+  return p;
 }
 
 // ---------- laptop side ----------

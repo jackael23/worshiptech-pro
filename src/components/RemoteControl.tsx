@@ -12,16 +12,19 @@
  *    right away; Schedule → "Ayusin" = move ↑↓ / remove items. The laptop does the change (one schedule).
  *  - 2026-11-08 (Mira): Chords — lyrics with chords for musicians (current + next), view only;
  *    Transpose / text size / chords on-off are saved on this phone.
+ *  - 2026-11-17 (Jarvis): top-right menu — "Gawing screen" (this phone / tablet / TV browser shows the
+ *    Projector or the Stage screen full screen, following the laptop) and "Background ng lyrics"
+ *    (one schedule item or the whole schedule; the laptop does the change). Disconnect moved in there.
  * Talks to the local server (remoteServer.ts) — Server-Sent Events in, small POSTs out.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, MonitorPlay, LogOut, Image as ImageIcon, Music2, Minus, Plus, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X, Megaphone } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Play, MonitorPlay, LogOut, Image as ImageIcon, Music2, Minus, Plus, ArrowUp, ArrowDown, Trash2, Search, BookOpen, X, Megaphone, MoreVertical, MonitorUp, Maximize2, Check } from "lucide-react";
 import { ChordSheet, nextPreview } from "./ChordSheet";
 import { transposeKey } from "../lib/chords";
 import { LiveMainScreen } from "./LiveScreen";
 import { SlideScreen } from "./SlideScreen";
-import { StageView } from "./StageScreen";
-import type { RemoteCmd, RemoteSnapshot, RemoteLibrary, BibleLookupResult } from "../lib/remoteLink";
+import { StageView, StagePrefs, loadStagePrefs, STAGE_PREFS_KEY } from "./StageScreen";
+import type { RemoteCmd, RemoteSnapshot, RemoteLibrary, RemoteBackground, BibleLookupResult } from "../lib/remoteLink";
 import { BIBLE_BOOKS } from "../lib/bibleBooks";
 
 const TOKEN_KEY = "wtp-remote-token";
@@ -124,6 +127,15 @@ export const RemoteControl: React.FC = () => {
   const [toast, setToast] = useState("");
   const [clock, setClock] = useState("");
   const [retry, setRetry] = useState(0);
+  // 2026-11-17: top-right menu, Background picker, and "Gawing screen" (remembered for this tab, so a TV that reloads stays a screen)
+  const [sheet, setSheet] = useState<null | "menu" | "bg">(null);
+  const [screen, setScreenState] = useState<ScreenKind | null>(readScreen);
+  const setScreen = (k: ScreenKind | null) => {
+    writeScreen(k);
+    setScreenState(k);
+    if (k) enterFullscreen();
+    else leaveFullscreen();
+  };
 
   useEffect(() => {
     document.title = "WorshipTech-Pro — Remote";
@@ -253,8 +265,9 @@ export const RemoteControl: React.FC = () => {
             {liveStateText(live)}
           </span>
         )}
-        <button onClick={() => logout()} className="btn btn-ghost btn-icon touch-44 -mr-2 shrink-0 text-fg-muted" aria-label="Disconnect" title="Disconnect">
-          <LogOut className="h-4 w-4" />
+        {/* 2026-11-17: menu = Gawing screen / Background / Disconnect (Disconnect used to be this button) */}
+        <button onClick={() => setSheet("menu")} className="btn btn-ghost btn-icon touch-44 -mr-2 shrink-0 text-fg-muted" aria-label="Menu" title="Menu" aria-haspopup="dialog" data-testid="remote-menu">
+          <MoreVertical className="h-5 w-5" />
         </button>
       </header>
 
@@ -277,10 +290,27 @@ export const RemoteControl: React.FC = () => {
       </main>
 
       {toast && (
-        <div role="status" className="pointer-events-none fixed inset-x-4 bottom-24 z-10 rounded-lg bg-fg px-3 py-2 text-center text-sm text-canvas shadow-lg">
+        <div role="status" className="pointer-events-none fixed inset-x-4 bottom-24 z-[60] rounded-lg bg-fg px-3 py-2 text-center text-sm text-canvas shadow-lg">
           {toast}
         </div>
       )}
+
+      {sheet === "menu" && (
+        <MenuSheet
+          onClose={() => setSheet(null)}
+          onScreen={(k) => {
+            setSheet(null);
+            setScreen(k);
+          }}
+          onBackground={() => setSheet("bg")}
+          onDisconnect={() => {
+            setSheet(null);
+            logout();
+          }}
+        />
+      )}
+      {sheet === "bg" && <BackgroundSheet snap={snap} library={library} cmd={cmd} disabled={disabled} onClose={() => setSheet(null)} />}
+      {screen && <RemoteScreen kind={screen} live={live} waiting={status.text} connected={!disabled} onExit={() => setScreen(null)} />}
 
       {/* bottom tabs — 2026-11-16 (Sanctuary): a floating pill with text tabs (mockup); all 6 tabs stay */}
       <nav className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2" aria-label="Remote">
@@ -1101,6 +1131,330 @@ const StageAlert: React.FC<TabProps> = ({ snap, cmd, disabled }) => {
         </button>
         <button disabled={disabled || !live.stageMessageActive} onClick={() => cmd({ type: "stage-msg", text: "", show: false, blink: false })} className="btn btn-danger h-14 rounded-xl text-sm">
           Hide
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------- 2026-11-17 (Jarvis): menu · Gawing screen · Background
+
+type ScreenKind = "main" | "stage";
+const SCREEN_KEY = "wtp-remote-screen";
+const readScreen = (): ScreenKind | null => {
+  try {
+    const v = sessionStorage.getItem(SCREEN_KEY);
+    return v === "main" || v === "stage" ? v : null;
+  } catch {
+    return null;
+  }
+};
+const writeScreen = (k: ScreenKind | null) => {
+  try {
+    if (k) sessionStorage.setItem(SCREEN_KEY, k);
+    else sessionStorage.removeItem(SCREEN_KEY);
+  } catch {
+    /* storage blocked — works until reload */
+  }
+};
+// Fullscreen needs a tap (browser rule) and is missing on iPhone Safari: both fail quietly, the screen still fills the page.
+const enterFullscreen = () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+};
+const leaveFullscreen = () => {
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+};
+
+const MenuSheet: React.FC<{ onClose: () => void; onScreen: (k: ScreenKind) => void; onBackground: () => void; onDisconnect: () => void }> = ({ onClose, onScreen, onBackground, onDisconnect }) => (
+  <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={onClose} role="dialog" aria-modal="true" aria-label="Menu" data-testid="remote-menu-sheet">
+    <div className="space-y-4 rounded-t-2xl border-t border-line bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4" onClick={(e) => e.stopPropagation()}>
+      <div>
+        <div className="eyebrow mb-1.5">Gawing screen ang device na ito</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onScreen("main")} className="btn btn-secondary h-14 rounded-xl text-sm" data-testid="remote-screen-main">
+            <MonitorUp className="h-4 w-4" />
+            Projector (lyrics)
+          </button>
+          <button onClick={() => onScreen("stage")} className="btn btn-secondary h-14 rounded-xl text-sm" data-testid="remote-screen-stage">
+            <Music2 className="h-4 w-4" />
+            Stage (chords)
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-fg-subtle">Full screen na susunod sa laptop. Para sa tablet o TV na nasa parehong WiFi. Tap sa screen para lumabas.</p>
+      </div>
+      <button onClick={onBackground} className="btn btn-secondary h-14 w-full rounded-xl text-sm" data-testid="remote-open-bg">
+        <ImageIcon className="h-4 w-4" />
+        Background ng lyrics
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onDisconnect} className="btn btn-ghost h-12 rounded-xl text-sm text-fg-muted" data-testid="remote-disconnect">
+          <LogOut className="h-4 w-4" />
+          Disconnect
+        </button>
+        <button onClick={onClose} className="btn btn-ghost h-12 rounded-xl text-sm">
+          Isara
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/**
+ * This device as a screen: "main" = what the projector shows, "stage" = lyrics with chords for musicians.
+ * It only follows the laptop (never sends anything). Pictures are the small copies phones get, and a
+ * video background shows as its still picture. The screen is kept awake where the browser allows it.
+ */
+const RemoteScreen: React.FC<{ kind: ScreenKind; live: RemoteSnapshot["live"] | undefined; waiting: string; connected: boolean; onExit: () => void }> = ({ kind, live, waiting, connected, onExit }) => {
+  const [bar, setBar] = useState(true);
+  const [prefs, setPrefs] = useState<StagePrefs>(loadStagePrefs);
+  const [clock, setClock] = useState("");
+  const [isFull, setIsFull] = useState(() => !!document.fullscreenElement);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const showBar = useCallback(() => {
+    setBar(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setBar(false), 4000);
+  }, []);
+  useEffect(() => {
+    showBar();
+    return () => clearTimeout(hideTimer.current);
+  }, [showBar]);
+
+  useEffect(() => {
+    const tick = () => setClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    tick();
+    const t = setInterval(tick, 10000);
+    const onFs = () => setIsFull(!!document.fullscreenElement);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.fullscreenElement && onExit();
+    document.addEventListener("fullscreenchange", onFs);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("fullscreenchange", onFs);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onExit]);
+
+  // keep the screen on (Screen Wake Lock; it is dropped when the page is hidden, so ask again when it is back)
+  useEffect(() => {
+    type Lock = { release: () => Promise<void> };
+    const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<Lock> } }).wakeLock;
+    if (!wl) return;
+    let lock: Lock | null = null;
+    let stopped = false;
+    const get = () => {
+      if (document.hidden) return;
+      wl.request("screen")
+        .then((l) => {
+          if (stopped) void l.release().catch(() => {});
+          else lock = l;
+        })
+        .catch(() => {});
+    };
+    get();
+    document.addEventListener("visibilitychange", get);
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", get);
+      void lock?.release().catch(() => {});
+    };
+  }, []);
+
+  const setPref = (x: Partial<StagePrefs>) =>
+    setPrefs((prev) => {
+      const next = { ...prev, ...x };
+      try {
+        localStorage.setItem(STAGE_PREFS_KEY, JSON.stringify(next));
+      } catch {
+        /* storage blocked */
+      }
+      return next;
+    });
+
+  const wait = (
+    <div className="grid h-full w-full place-items-center bg-black p-6 text-center text-sm text-zinc-500" data-testid="remote-screen-waiting">
+      Naghihintay sa laptop… ({waiting})
+    </div>
+  );
+  const barBtn = "touch-44 inline-flex items-center justify-center gap-1 rounded-md px-2 text-sm hover:bg-white/10";
+
+  return (
+    <div className={`fixed inset-0 z-50 grid place-items-center overflow-hidden bg-black text-white ${bar ? "" : "cursor-none"}`} onClick={showBar} onMouseMove={showBar} data-testid="remote-screen" data-kind={kind}>
+      {kind === "main" ? (
+        // 16:9 box that fits the device (black bars where it does not)
+        <div style={{ width: "min(100vw, calc(100dvh * 16 / 9))" }}>{live ? <LiveMainScreen liveState={live} playVideo={false} /> : <div className="aspect-video w-full">{wait}</div>}</div>
+      ) : live ? (
+        <StageView state={live} prefs={prefs} clock={clock} />
+      ) : (
+        wait
+      )}
+
+      {/* controls: shown for a few seconds after a tap */}
+      <div
+        className={`fixed inset-x-0 top-0 flex flex-wrap items-center gap-1 bg-zinc-950/90 px-2 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] text-zinc-200 ring-1 ring-white/10 transition-opacity duration-300 ${
+          bar ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={(e) => {
+          e.stopPropagation();
+          showBar();
+        }}
+        data-testid="remote-screen-bar"
+      >
+        <span className="inline-flex items-center gap-1.5 px-1 text-xs">
+          <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-ok" : "bg-warn"}`} />
+          {kind === "main" ? "Projector" : "Stage"}
+        </span>
+        {kind === "stage" && (
+          <>
+            <span className="mx-1 h-5 w-px bg-white/15" />
+            <span className="text-xs text-zinc-500">Key</span>
+            <button onClick={() => setPref({ transpose: Math.max(-11, prefs.transpose - 1) })} className={barBtn} aria-label="Transpose down">
+              <Minus className="h-4 w-4" />
+            </button>
+            <button onClick={() => setPref({ transpose: 0 })} className="min-w-9 rounded-md px-1 py-2 font-mono text-sm tabular-nums hover:bg-white/10" title="Balik sa orihinal">
+              {prefs.transpose > 0 ? `+${prefs.transpose}` : prefs.transpose}
+            </button>
+            <button onClick={() => setPref({ transpose: Math.min(11, prefs.transpose + 1) })} className={barBtn} aria-label="Transpose up">
+              <Plus className="h-4 w-4" />
+            </button>
+            <button onClick={() => setPref({ size: Math.max(0.6, +(prefs.size - 0.1).toFixed(2)) })} className={barBtn} aria-label="Mas maliit na text">
+              A−
+            </button>
+            <button onClick={() => setPref({ size: Math.min(1.8, +(prefs.size + 0.1).toFixed(2)) })} className={barBtn} aria-label="Mas malaking text">
+              A+
+            </button>
+            <button onClick={() => setPref({ chords: !prefs.chords })} className={`${barBtn} ${prefs.chords ? "bg-amber-400/20 text-amber-200" : ""}`} aria-pressed={prefs.chords}>
+              <Music2 className="h-4 w-4" />
+              Chords
+            </button>
+          </>
+        )}
+        <span className="ml-auto" />
+        {!isFull && !!document.documentElement.requestFullscreen && (
+          <button onClick={enterFullscreen} className={barBtn}>
+            <Maximize2 className="h-4 w-4" />
+            Fullscreen
+          </button>
+        )}
+        <button onClick={onExit} className={`${barBtn} bg-white/10 font-semibold`} data-testid="remote-screen-exit">
+          <X className="h-4 w-4" />
+          Lumabas
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Lyrics background from the phone: one schedule item, or the whole schedule (every item now + the ones added later). */
+const BackgroundSheet: React.FC<{ snap: RemoteSnapshot | null; library: RemoteLibrary | null; cmd: (c: RemoteCmd) => void; disabled: boolean; onClose: () => void }> = ({ snap, library, cmd, disabled, onClose }) => {
+  const [scope, setScope] = useState<"item" | "all">("item");
+  const items = snap?.schedule ?? [];
+  // default target: the item on air, else the one selected on the laptop
+  const onAirId = snap?.live.isLive ? snap.live.activeScheduleItemId : null;
+  const fallbackId = (onAirId && items.some((i) => i.id === onAirId) ? onAirId : snap?.selected.itemId) || items[0]?.id || "";
+  const [picked, setPicked] = useState("");
+  const target = items.find((i) => i.id === picked) ?? items.find((i) => i.id === fallbackId);
+  const all = scope === "all";
+  const current = all ? snap?.allBg ?? null : target?.bg ?? null;
+  const backgrounds = library?.backgrounds;
+  const canPick = !disabled && (all || !!target);
+  const pick = (bgId: string | null) => {
+    if (!canPick) return;
+    cmd(all ? { type: "set-bg", scope: "all", bgId } : { type: "set-bg", scope: "item", itemId: target!.id, bgId });
+  };
+  const tile = (b: RemoteBackground) => {
+    const selected = current === b.id;
+    return (
+      <button
+        key={b.id}
+        onClick={() => pick(b.id)}
+        disabled={!canPick}
+        aria-pressed={selected}
+        aria-label={`Background: ${b.name}${b.kind === "video" ? " (video)" : ""}`}
+        className={`relative overflow-hidden rounded-lg border text-left disabled:opacity-50 ${selected ? "border-accent ring-2 ring-accent" : "border-line"}`}
+        data-bg-id={b.id}
+      >
+        <div className="aspect-video bg-black" style={b.css ? { background: b.css } : undefined}>
+          {b.thumb && <img src={b.thumb} alt="" className="h-full w-full object-cover" draggable={false} />}
+        </div>
+        {b.kind === "video" && <span className="absolute left-1 top-1 rounded bg-black/70 px-1 font-mono text-[10px] text-white">VIDEO</span>}
+        {selected && (
+          <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-on-accent">
+            <Check className="h-3 w-3" />
+          </span>
+        )}
+        <div className="truncate bg-surface-2 px-1.5 py-1 text-[11px] text-fg">{b.name}</div>
+      </button>
+    );
+  };
+  const uploads = backgrounds?.filter((b) => b.kind !== "built-in") ?? [];
+  const builtIn = backgrounds?.filter((b) => b.kind === "built-in") ?? [];
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-canvas text-fg" role="dialog" aria-modal="true" aria-label="Background ng lyrics" data-testid="remote-bg-sheet">
+      <header className="flex shrink-0 items-center gap-2 px-5 pb-2 pt-[max(1.25rem,env(safe-area-inset-top))]">
+        <h1 className="min-w-0 flex-1 truncate font-display text-[22px] font-medium leading-tight tracking-tight">Background ng lyrics</h1>
+        <button onClick={onClose} className="btn btn-ghost btn-icon touch-44 -mr-2 shrink-0" aria-label="Isara" data-testid="remote-bg-close">
+          <X className="h-5 w-5" />
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="seg grid grid-cols-2" role="group" aria-label="Para saan ang background">
+          <button onClick={() => setScope("item")} aria-pressed={!all} className="seg-item min-h-11" data-testid="remote-bg-scope-item">
+            Isang kanta / item
+          </button>
+          <button onClick={() => setScope("all")} aria-pressed={all} className="seg-item min-h-11" data-testid="remote-bg-scope-all">
+            Buong schedule
+          </button>
+        </div>
+
+        {all ? (
+          <p className="text-xs text-fg-muted">Lahat ng {items.length} item sa schedule, pati ang mga idadagdag pa. Ang PowerPoint slides na may sariling larawan ay hindi nagbabago.</p>
+        ) : items.length === 0 ? (
+          <p className="notice-info text-sm">Walang laman ang schedule.</p>
+        ) : (
+          <label className="block text-xs text-fg-muted">
+            Para sa
+            <select value={target?.id ?? ""} onChange={(e) => setPicked(e.target.value)} className="input mt-1 h-12 w-full text-base" data-testid="remote-bg-item">
+              {items.map((i, n) => (
+                <option key={i.id} value={i.id}>
+                  {n + 1}. {i.title}
+                  {i.id === onAirId ? " (LIVE)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {disabled && <p className="notice-warn text-sm">Hindi konektado sa laptop.</p>}
+
+        {!backgrounds ? (
+          <p className="notice-info text-sm">Hinihintay ang listahan ng background mula sa laptop. Kung matagal, i-reload ang app sa laptop.</p>
+        ) : (
+          <>
+            {uploads.length > 0 && (
+              <div>
+                <div className="eyebrow mb-1.5">Mga upload sa laptop</div>
+                <div className="grid grid-cols-3 gap-2" data-testid="remote-bg-uploads">
+                  {uploads.map(tile)}
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="eyebrow mb-1.5">Kasama sa app</div>
+              <div className="grid grid-cols-3 gap-2" data-testid="remote-bg-builtin">
+                {builtIn.map(tile)}
+              </div>
+            </div>
+            {uploads.length === 0 && <p className="text-xs text-fg-subtle">Para sa sariling larawan o video: i-upload muna sa Media tab ng laptop, tapos lalabas dito.</p>}
+          </>
+        )}
+
+        <button onClick={() => pick(null)} disabled={!canPick} className="btn btn-secondary h-12 w-full rounded-xl text-sm" data-testid="remote-bg-remove">
+          <X className="h-4 w-4" />
+          Alisin ang background{all ? " ng lahat" : ""}
         </button>
       </div>
     </div>

@@ -26,6 +26,7 @@ import {
 import { couchLogin, couchLogout, couchSession, getAuthConfig, openAccount, refreshAuth, useAuth } from "../lib/auth";
 import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { DEFAULT_COUCH } from "../lib/couchSync";
+import { useTeamSettings } from "../lib/teamSyncSettings";
 
 const STATE_LABEL: Record<SyncStatus["state"], string> = {
   off: "CouchDB: off",
@@ -70,6 +71,8 @@ export const CouchSyncPanel: React.FC = () => {
   const [user, setUser] = useState<string | null>(null);
 
   useEffect(() => subscribeSync(setStatus), []);
+  // 2026-11-17: while Team sync (Firebase) is on, songs are left out of the CouchDB sync.
+  const teamOn = useTeamSettings().enabled;
 
   // Re-checked when the account logs in / out (it may be the same CouchDB, so the same cookie).
   const account = useAuth();
@@ -202,6 +205,11 @@ export const CouchSyncPanel: React.FC = () => {
           <p className="text-fg-subtle">
             Laging naka-save muna sa browser na ito ang kanta, Bible, PPT at media (larawan/video); kapag naka-login, sumasabay sa CouchDB mo (dalawang direksyon).
           </p>
+          {teamOn && (
+            <p className="text-fg-muted" data-testid="couch-team-note">
+              Naka-on ang Team sync: sa team napupunta ang mga kanta, kaya Bible, PPT, media at lineups lang ang isinasabay dito.
+            </p>
+          )}
           <div className="space-y-1.5 rounded-md border border-line p-2" data-testid="cloud-section">
             <div className="flex items-center gap-1.5 font-semibold text-fg">
               <Cloud className="w-3.5 h-3.5" /> Cloud sync <span className="font-normal text-fg-subtle">(Pro)</span>

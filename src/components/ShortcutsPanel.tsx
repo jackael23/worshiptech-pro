@@ -37,9 +37,11 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({ version, onAskAI
           )}
         </div>
 
+        {/* 2026-11-17 (Jarvis): no "Ask AI" on tablets / phones (Jack) — shown only on a wide screen with a mouse */}
         <button
           onClick={() => onAskAI("Ano ang pinakamahalagang shortcuts na dapat kabisaduhin ng media team?")}
-          className="bg-surface hover:bg-surface-2 text-fg border border-line text-xs font-semibold px-3.5 py-2 min-h-[44px] lg:min-h-0 rounded-lg flex items-center gap-1.5 transition-all shadow-xs"
+          className="bg-surface hover:bg-surface-2 text-fg border border-line text-xs font-semibold px-3.5 py-2 min-h-[44px] lg:min-h-0 rounded-lg hidden lg:pointer-fine:flex items-center gap-1.5 transition-all shadow-xs"
+          data-testid="ask-ai-shortcuts"
         >
           <Sparkles className="w-4 h-4 text-accent-text" />
           <span>Ask AI Shortcut Tips</span>
