@@ -1099,12 +1099,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         {/* ---------- PANEL 1: LIBRARY ---------- */}
         <section ref={libRef} className={`${panelVis("library")} sim-card min-h-0 flex-col overflow-hidden`} aria-label="Library">
           <div className="space-y-2.5 border-b border-line p-3 lg:space-y-3.5 lg:border-0 lg:px-5 lg:pb-2 lg:pt-5">
-            {/* 2026-11-16 (Sanctuary): "+ New song" in the card header like the mockup; Ask in Chat = the small icon beside it */}
+            {/* 2026-11-16 (Sanctuary): "+ New song" in the card header like the mockup.
+                2026-11-17 (Jarvis): the small "Ask in Chat" icon beside it was removed (Jack: no more AI chat). */}
             <div className="hidden items-center gap-2 lg:flex">
               <span className="section-title mr-auto">Library</span>
-              <button onClick={() => onAskAssistant("Paano magdagdag ng bagong kanta sa library?")} className="icon-btn" title="Ask in Chat" aria-label="Ask in Chat">
-                <Sparkles />
-              </button>
               <button
                 onClick={() => {
                   setActiveMediaTab("songs");

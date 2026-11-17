@@ -4,7 +4,6 @@ import remarkGfm from "remark-gfm";
 import {
   Send,
   Sparkles,
-  Bot,
   User,
   RotateCcw,
   Copy,
@@ -13,15 +12,16 @@ import {
   Volume2,
   Square,
   Tv,
-  HelpCircle,
   FileMusic,
   BookOpen,
-  Radio,
   Monitor,
-  AlertTriangle,
-  Flame,
+  Music2,
+  ArrowUpDown,
+  Guitar,
+  Keyboard,
 } from "lucide-react";
 import { ChatMessage, EasyWorshipVersion, SupportedLanguage } from "../types";
+import { answerHelpQuestion } from "../lib/helpSearch";
 
 interface ChatAssistantProps {
   version: EasyWorshipVersion;
@@ -30,43 +30,17 @@ interface ChatAssistantProps {
   onOpenGuides: (guideId?: string) => void;
 }
 
+// 2026-11-17 (Jarvis): Help chat without AI (Gemini removed). Topics for operators AND musicians;
+// each text is phrased so lib/helpSearch.ts finds the right article / tool.
 const PRESET_QUERIES = [
-  {
-    icon: FileMusic,
-    tag: "Adding Songs",
-    text: "Paano ako magdadagdag ng kanta sa service schedule?",
-    enText: "How do I add a song to the service schedule?",
-  },
-  {
-    icon: BookOpen,
-    tag: "Scripture",
-    text: "Pastor wants to show John 3:16 instantly.",
-    enText: "Pastor wants to show John 3:16 instantly on screen.",
-  },
-  {
-    icon: Radio,
-    tag: "NDI & OBS",
-    text: "Paano ko isasama ang lyrics sa aming OBS live stream?",
-    enText: "How to send lyrics to OBS live stream using NDI?",
-  },
-  {
-    icon: Monitor,
-    tag: "Foldback Stage",
-    text: "Paano i-setup ang Foldback (Confidence Screen) para sa worship team?",
-    enText: "How do I setup Foldback / Stage Display for singers & pastor?",
-  },
-  {
-    icon: AlertTriangle,
-    tag: "Nursery Alert",
-    text: "Paano magpalabas ng Nursery Alert o emergency message ticker habang may preaching?",
-    enText: "How to trigger a nursery alert ticker on screen during service?",
-  },
-  {
-    icon: Flame,
-    tag: "Video Backgrounds",
-    text: "Paano mag-loop ng motion video background sa likod ng worship lyrics?",
-    enText: "How do I loop motion video backgrounds behind worship lyrics?",
-  },
+  { icon: FileMusic, tag: "Add Song", text: "Paano maglagay ng kanta sa schedule?", enText: "How do I add a song to the schedule?" },
+  { icon: Music2, tag: "Chords", text: "Paano maglagay ng chords?", enText: "How do I add chords?" },
+  { icon: Monitor, tag: "Stage Screen", text: "Paano buksan ang Stage screen?", enText: "How do I open the Stage screen?" },
+  { icon: ArrowUpDown, tag: "Transpose", text: "Paano mag-transpose?", enText: "How do I transpose?" },
+  { icon: Guitar, tag: "Capo", text: "Capo calculator", enText: "Capo calculator" },
+  { icon: BookOpen, tag: "Bible", text: "Paano ipakita ang Juan 3:16?", enText: "How do I show John 3:16?" },
+  { icon: Tv, tag: "Projector", text: "Paano ilabas sa projector?", enText: "How do I show it on the projector?" },
+  { icon: Keyboard, tag: "Hotkeys", text: "Ano ang mga shortcut keys?", enText: "What are the shortcut keys?" },
 ];
 
 // ---------- 2026-10-28 (Jarvis): welcome message, saved chat, voice ----------
@@ -75,48 +49,42 @@ const CHAT_KEY = "wtp-chat-v1";
 const MAX_SAVED_MESSAGES = 80;
 const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// 2026-11-17 (Jarvis): no longer an AI assistant — offline Help for the media team and the band.
 function welcomeText(version: EasyWorshipVersion, language: SupportedLanguage, reset: boolean): string {
-  const keys = "[Page Down] Go Live, [Ctrl+B] Black, [Ctrl+C] Text, [Ctrl+L] Logo";
   if (language === "English") {
-    if (reset) return `Chat cleared. How can I help you with **${version}** today?`;
-    return `### 👋 Hi! I'm **WorshipTech-Pro**
-Your AI assistant for **${version}** church presentation software.
+    if (reset) return `Chat cleared. What do you need help with?`;
+    return `### 👋 Hi! This is **WorshipTech-Pro Help**
+Quick answers for the media team **and the band**, even with no internet.
 
-I can give clear, **step-by-step guidance** for your church AV & media team:
-- 🎵 **Adding & formatting songs** in the Service Schedule
-- 📖 **Quick Scripture / Bible projection** during the live service
-- 📡 **NDI live stream setup** to OBS / vMix (transparent lower-thirds)
-- 🖥️ **Stage Foldback Display** for singers and the pastor
-- ⚡ **Emergency controls & hotkeys** (${keys})
+- 🎵 **Songs, chords and the Schedule**
+- 🖥️ **Projector, Stage screen and alerts**
+- 🎸 **Transpose and capo**: type \`G to E\` or \`capo 3 G\`
+- 📖 **Bible verses** and ⌨️ **hotkeys** (Page Down, Ctrl+B…)
 
-Pick a quick topic below or type your question!`;
+Pick a topic below or type a short question!`;
   }
   if (language === "Taglish") {
-    if (reset) return `Cleared na ang chat. Ano'ng maitutulong ko sa **${version}** today?`;
-    return `### 👋 Hi! Ako si **WorshipTech-Pro**
-Your AI assistant para sa **${version}**.
+    if (reset) return `Cleared na ang chat. Ano'ng kailangan mo?`;
+    return `### 👋 Hi! Ito ang **WorshipTech-Pro Help**
+Quick answers para sa media team **at sa banda**, kahit walang internet.
 
-Tutulungan kita step-by-step, para sa buong media team:
-- 🎵 **Pag-add at pag-format ng songs** sa Service Schedule
-- 📖 **Bible verse sa screen**, mabilis, kahit live na
-- 📡 **NDI setup** papunta sa OBS / vMix (transparent lower-thirds)
-- 🖥️ **Stage Foldback Display** para sa singers at kay Pastor
-- ⚡ **Emergency controls at hotkeys** (${keys})
+- 🎵 **Songs, chords at Schedule**
+- 🖥️ **Projector, Stage screen at alerts**
+- 🎸 **Transpose at capo**: i-type lang ang \`G to E\` o \`capo 3 G\`
+- 📖 **Bible verse** at ⌨️ **hotkeys** (Page Down, Ctrl+B…)
 
-Pili ka lang ng topic sa baba, o i-type mo na 'yung tanong mo!`;
+Pili ka ng topic sa baba, o i-type ang maikling tanong!`;
   }
-  if (reset) return `Bago na ulit ang usapan. Ano'ng maitutulong ko sa **${version}** ngayon?`;
-  return `### 👋 Kumusta! Ako si **WorshipTech-Pro**
-Katulong mo ako sa **${version}**.
+  if (reset) return `Bago na ulit ang usapan. Ano'ng kailangan mo?`;
+  return `### 👋 Kumusta! Ito ang **WorshipTech-Pro Help**
+Mabilis na sagot para sa media team **at sa banda**, kahit walang internet.
 
-Ituturo ko sa 'yo nang sunud-sunod, para sa buong media team:
-- 🎵 **Paglalagay ng kanta** sa Service Schedule
-- 📖 **Pagpapakita ng Bible verse**, mabilis, kahit nasa gitna na ng service
-- 📡 **NDI papunta sa OBS / vMix**, para may lyrics din sa live stream
-- 🖥️ **Foldback sa stage**, para sa singers at kay Pastor
-- ⚡ **Mga shortcut kapag emergency** (${keys})
+- 🎵 **Kanta, chords at Schedule**
+- 🖥️ **Projector, Stage screen at alerts**
+- 🎸 **Transpose at capo**: i-type lang ang \`G to E\` o \`capo 3 G\`
+- 📖 **Bible verse** at ⌨️ **hotkeys** (Page Down, Ctrl+B…)
 
-Pumili ka lang ng topic sa baba, o i-type mo na 'yung tanong mo!`;
+Pumili ka ng topic sa baba, o i-type ang maikling tanong!`;
 }
 
 function buildWelcome(version: EasyWorshipVersion, language: SupportedLanguage, reset = false): ChatMessage {
@@ -176,26 +144,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   // stop reading aloud when leaving the Chat tab
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
 
-  // 2026-10-28 (Jarvis): the online version (Firebase Hosting, static files only) has no server
-  // for Gemini. Ask /api/health once; if it doesn't answer with JSON, chat is turned off with a note.
-  const [aiStatus, setAiStatus] = useState<"checking" | "online" | "offline">("checking");
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/health", { cache: "no-store" })
-      .then(async (r) => {
-        const isJson = (r.headers.get("content-type") || "").includes("application/json");
-        const data = r.ok && isJson ? await r.json().catch(() => null) : null;
-        if (alive) setAiStatus(data?.status === "ok" ? "online" : "offline");
-      })
-      .catch(() => alive && setAiStatus("offline"));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const chatOff = aiStatus !== "online";
-
   const [inputQuery, setInputQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -206,61 +155,22 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages]);
 
-  const handleSendMessage = async (textToSend?: string) => {
-    const query = (textToSend || inputQuery).trim();
-    if (!query || isLoading || chatOff) return;
-
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
+  // 2026-11-17 (Jarvis): answered right here in the browser (lib/helpSearch.ts) — no server, no AI,
+  // so it also works on the online (Firebase) version and with no internet.
+  const handleSendMessage = (textToSend?: string) => {
+    const query = (textToSend || inputQuery).trim().slice(0, 1000);
+    if (!query) return;
+    const time = nowTime();
+    const stamp = Date.now();
+    const answer = answerHelpQuestion(query, language);
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${stamp}`, role: "user", content: query, timestamp: time },
+      { id: `assistant-${stamp}`, role: "assistant", content: answer.text, timestamp: time },
+    ]);
     setInputQuery("");
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          userMessage: query,
-          version,
-          language,
-        }),
-      });
-
-      if (!response.ok) {
-        // 2026-10-20 (Jarvis): show the server's friendly message (rate limit, too long, etc.).
-        const errData = await response.json().catch(() => null);
-        throw new Error(errData?.error || `Server returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: data.text || "Walang tugon mula sa server.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err: any) {
-      const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: `⚠️ Hindi makakonekta sa assistant. Subukang muli o buksan ang aming built-in Step-by-Step Guides. (${err.message})`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleCopy = (id: string, text: string) => {
@@ -306,13 +216,11 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       {/* Chat Subheader */}
       <div className="px-6 py-3 bg-surface border-b border-line flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className={`w-2.5 h-2.5 rounded-full ${aiStatus === "online" ? "bg-ok animate-pulse" : aiStatus === "offline" ? "bg-fg-subtle" : "bg-warn"}`} />
-          <span className="text-xs font-semibold text-fg">
-            {aiStatus === "offline" ? "AI chat offline" : "WorshipTech-Pro Agent Active"} ({version})
-          </span>
+          <div className="w-2.5 h-2.5 rounded-full bg-ok" />
+          <span className="text-xs font-semibold text-fg">WorshipTech-Pro Help</span>
           <span className="text-fg-subtle hidden sm:inline">•</span>
           <span className="text-xs text-fg-muted hidden sm:inline">
-            Trained on EasyWorship Workflows & Hotkeys
+            {language === "English" ? "Offline · for the media team and the band" : "Offline · para sa media team at sa banda"}
           </span>
         </div>
 
@@ -325,6 +233,15 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
             <span>Open Simulator</span>
           </button>
           <button
+            onClick={() => onOpenGuides()}
+            title="Guides"
+            aria-label="Guides"
+            className="tap-target text-xs text-fg-muted hover:text-fg border border-line px-3 py-1.5 rounded-lg hover:bg-surface-3 transition-colors flex items-center gap-1.5 font-medium"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Guides</span>
+          </button>
+          <button
             onClick={handleResetChat}
             title="Clear Chat History (naka-save ang chat sa browser na ito)"
             className="tap-target text-fg-muted hover:text-fg px-2 py-1.5 rounded-lg hover:bg-surface-3 transition-colors flex items-center gap-1 text-xs font-medium"
@@ -334,30 +251,6 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           </button>
         </div>
       </div>
-
-      {aiStatus === "offline" && (
-        <div role="status" className="px-6 py-3 bg-warn-soft border-b border-warn/40 text-xs text-warn-text flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="flex-1 min-w-[16rem]">
-            {language === "English" ? (
-              <>
-                <strong>AI chat isn't available in the online version yet.</strong> For now, use the step-by-step Guides, the Hotkeys list and the Simulator.
-              </>
-            ) : (
-              <>
-                <strong>Wala pang AI chat sa online version.</strong> Sa ngayon, gamitin muna ang step-by-step Guides, ang listahan ng Hotkeys at ang Simulator.
-              </>
-            )}
-          </span>
-          <span className="flex gap-1.5 shrink-0">
-            <button onClick={() => onOpenGuides()} className="tap-target px-3 py-1.5 rounded-md bg-surface border border-warn/40 font-semibold hover:bg-warn-soft">
-              Guides
-            </button>
-            <button onClick={onOpenSimulator} className="tap-target px-3 py-1.5 rounded-md bg-surface border border-warn/40 font-semibold hover:bg-warn-soft">
-              Simulator
-            </button>
-          </span>
-        </div>
-      )}
 
       {/* Preset Topics Quick Bar */}
       <div className="px-6 py-2.5 bg-surface-2 border-b border-line flex items-center gap-2 overflow-x-auto scrollbar-none">
@@ -371,8 +264,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
             <button
               key={idx}
               onClick={() => handleSendMessage(language === "English" ? preset.enText : preset.text)}
-              disabled={chatOff}
-              className="tap-target disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface text-fg border border-line hover:border-line-strong hover:bg-surface-2 transition-all shadow-xs"
+              className="tap-target shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface text-fg border border-line hover:border-line-strong hover:bg-surface-2 transition-all shadow-xs"
             >
               <Icon className="w-3.5 h-3.5 text-accent-text" />
               <span>{preset.tag}</span>
@@ -412,13 +304,13 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 {/* Header tag */}
                 <div className="flex items-center justify-between gap-4 mb-2 text-xs text-fg-muted font-medium">
                   <span className="font-semibold text-fg">
-                    {isUser ? "You (Media Volunteer)" : "WorshipTech-Pro Assistant"}
+                    {isUser ? (language === "English" ? "You" : "Ikaw") : "WorshipTech-Pro Help"}
                   </span>
                   <span>{msg.timestamp}</span>
                 </div>
 
-                {/* Content */}
-                <div className="prose prose-sm max-w-none text-fg prose-p:my-1.5 prose-headings:text-fg prose-headings:font-bold prose-headings:my-2 prose-strong:text-fg prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
+                {/* Content — 2026-11-17 (Jarvis): list numbers/bullets, tables and `code` styled here (no prose plugin in the build) */}
+                <div className="prose prose-sm max-w-none text-fg [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_h3]:text-base [&_h3]:font-bold [&_h3]:my-2 [&_hr]:my-3 [&_hr]:border-accent/30 [&_table]:my-2 [&_table]:border-collapse [&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1 [&_code]:rounded [&_code]:bg-surface-3 [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs prose-p:my-1.5 prose-headings:text-fg prose-headings:font-bold prose-headings:my-2 prose-strong:text-fg prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                 </div>
 
@@ -479,23 +371,6 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           );
         })}
 
-        {/* Loading Indicator */}
-        {isLoading && (
-          <div className="flex gap-3 max-w-md mr-auto">
-            <div className="w-8 h-8 rounded-lg bg-accent text-on-accent font-bold flex items-center justify-center shrink-0 shadow-xs text-xs">
-              PRO
-            </div>
-            <div className="bg-accent-soft border border-accent/30 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-fg flex items-center gap-2 shadow-xs">
-              <div className="flex space-x-1.5">
-                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-              <span className="text-xs text-fg-muted ml-1">WorshipTech-Pro is crafting steps...</span>
-            </div>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -514,24 +389,17 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
             maxLength={1000}
-            disabled={chatOff}
             placeholder={
-              aiStatus === "offline"
-                ? language === "English"
-                  ? "AI chat isn't available in the online version"
-                  : "Wala pang AI chat sa online version"
-                : language === "Tagalog"
-                ? "Magtanong tungkol sa EasyWorship (hal. Paano mag-setup ng NDI sa OBS?)"
-                : language === "English"
-                ? "Ask anything about EasyWorship (e.g. How to project John 3:16 instantly?)"
-                : "Magtanong sa Taglish (hal. Paano mag-add ng song sa service schedule?)"
+              language === "English"
+                ? "Ask a short question (e.g. chords, Stage screen, G to E, capo 3 G)"
+                : "Magtanong nang maikli (hal. chords, Stage screen, G to E, capo 3 G)"
             }
-            className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-accent/25 text-sm text-fg placeholder-fg-subtle transition-all pr-12"
+            className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl focus:outline-none focus:ring-2 focus:ring-accent/25 text-sm text-fg placeholder-fg-subtle transition-all pr-12"
           />
 
           <button
             type="submit"
-            disabled={!inputQuery.trim() || isLoading || chatOff}
+            disabled={!inputQuery.trim()}
             className="tap-target absolute right-2 p-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg flex items-center justify-center transition-all shadow-xs active:scale-95 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
@@ -540,9 +408,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
         <div className="mt-2.5 flex items-center justify-between text-xs text-fg-subtle px-1">
           <span>
-            💡 Pro-Tip: EasyWorship 7: black screen <strong className="text-fg-muted font-semibold">[Ctrl+B]</strong>, text on/off <strong className="text-fg-muted font-semibold">[Ctrl+C]</strong>.
+            💡 Tip: black screen <strong className="text-fg-muted font-semibold">[Ctrl+B]</strong>, text on/off <strong className="text-fg-muted font-semibold">[Ctrl+C]</strong>.
           </span>
-          <span className="hidden sm:inline">Powered by Gemini 3.7 Flash</span>
+          <span className="hidden sm:inline">{language === "English" ? "Works offline · no AI" : "Gumagana kahit offline · walang AI"}</span>
         </div>
       </div>
     </div>

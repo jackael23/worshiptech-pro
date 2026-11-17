@@ -1,8 +1,8 @@
 # Worship Tech Pro
 
 Church presentation web app (EasyWorship-like) for Filipino churches: songs, Bible, projection,
-lineup schedule, phone remote, themes, Stage screen with chords for musicians, plus an AI chat
-and guides for EasyWorship volunteers. Owner: Jack (solo developer).
+lineup schedule, phone remote, themes, Stage screen with chords for musicians, plus an offline
+Help chat (no AI) and guides for EasyWorship volunteers. Owner: Jack (solo developer).
 
 Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
@@ -21,7 +21,8 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - React 19 + TypeScript + Vite 6 + Tailwind 4, `lucide-react` icons, `motion`
 - Express server (`server.ts`, run with `tsx`) serves Vite in dev and `dist/` in prod, port 3000
 - PouchDB in the browser (IndexedDB), optional live sync to CouchDB
-- Gemini (`@google/genai`) for the chat tab; works without a key (offline answers)
+- Chat tab = offline Help, no AI (2026-11-17: Gemini removed): `src/lib/helpKb.ts` (articles),
+  `src/lib/helpSearch.ts` (keyword search), `src/lib/musicTools.ts` (transpose / capo calculator)
 - Firebase Hosting config exists for a static-only deploy (no local server there)
 
 ## Commands
@@ -38,7 +39,7 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 - `deploy/` + `Dockerfile` — hosted server (app + CouchDB + Caddy) on one VPS
 - `authServer.ts` — account routes (sign-up, config)
 - `billingServer.ts` — PayMongo: checkout, webhook, confirm, hourly expiry sweep
-- `server.ts` — Express: `/api/chat` (rate limited), `/api/health`, `/api/app/presence` (auto-stop)
+- `server.ts` — Express: `/api/health`, `/api/app/presence` (auto-stop); `/api/chat` removed 2026-11-17
 - `remoteServer.ts` — phone remote bridge over SSE, PIN login, host routes are localhost-only (`isLocal`)
 - `src/main.tsx` — picks the page by URL: `?output=main` projector, `?output=stage` Stage screen,
   `?remote` phone remote, else `App`. Each is a lazy chunk.
@@ -155,3 +156,6 @@ Still open / next:
   forwarding, Pro on sale, deploy files); tested with a "hosted" + "laptop" server and two browsers.
 - 2026-11-16: PayMongo prepaid billing built (checkout, webhook, confirm, expiry); stand-in tests only.
 - 2026-11-16: Lineups built and locked to Basic / Pro; tested save, open, overwrite, delete, reload.
+- 2026-11-17: Gemini AI chat removed (no API key). Chat tab = offline Help in the browser (articles +
+  transpose / capo calculator for musicians); works on Firebase Hosting too. "Ask in Chat" icon
+  beside "+ New song" removed. `@google/genai` uninstalled.
