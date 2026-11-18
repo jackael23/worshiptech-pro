@@ -2,7 +2,7 @@
  * 2026-11-16: Account — login / gumawa ng account / logout (opened from the app bar).
  * Login is optional: songs, Bible and projection work without it. See lib/auth.ts.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { LogIn, LogOut, UserPlus, WifiOff, X } from "lucide-react";
 import { AuthState, PASSWORD_MIN, getAuthConfig, login, logout, signup } from "../lib/auth";
 import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
@@ -27,6 +27,7 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -67,6 +68,13 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
   };
 
   const plan = planFromRoles(auth.roles);
+
+  // 2026-11-18: the plan list under the form leads here — sign-up when the server allows it, else login.
+  const startSubscribe = () => {
+    if (canSignup) switchMode("signup");
+    emailRef.current?.focus();
+    emailRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Account">
@@ -133,6 +141,7 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
                 autoCapitalize="none"
                 spellCheck={false}
                 autoFocus
+                ref={emailRef}
                 data-testid="account-email"
               />
             </label>
@@ -154,6 +163,10 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
               {mode === "signup" ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
               {busy ? "Sandali…" : mode === "signup" ? "Gumawa ng account" : "Login"}
             </button>
+            {/* 2026-11-18: plans and prices visible before logging in */}
+            {!auth.offline && mode === "login" && (
+              <PlanSection plan="free" returned={null} onStart={startSubscribe} startLabel={canSignup ? "Gumawa ng account para mag-subscribe" : "Mag-login para mag-subscribe"} />
+            )}
           </form>
         )}
       </div>

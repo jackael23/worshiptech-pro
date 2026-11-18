@@ -12,13 +12,49 @@ interface Props {
   plan: Plan;
   /** Set when the page was opened by PayMongo's "back to merchant" link. */
   returned: "success" | "cancel" | null;
+  /**
+   * 2026-11-18: set = not logged in. Only the price list is shown (no status / checkout calls),
+   * with one button that sends the user to sign-up (or login) in the Account window.
+   */
+  onStart?: () => void;
+  startLabel?: string;
 }
 
 const WARN_DAYS = 7;
 const INCLUDES: Record<string, string> = { basic: "Phone remote at Lineups", pro: "Lahat ng nasa Basic + cloud sync (songs, Bible, PPT, media at lineups sa lahat ng computer ninyo)" };
 const niceDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
-export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
+/**
+ * 2026-11-18: read-only price list, so people can see the plans BEFORE making an account (and
+ * while this server cannot take payments yet). Prices still come from the server (/api/billing/plans).
+ */
+const PriceList: React.FC<{ info: BillingInfo }> = ({ info }) => (
+  <div className="space-y-1.5" data-testid="plan-prices">
+    <div className="text-xs font-semibold text-fg">Mga plan</div>
+    <div className="rounded-lg border border-line p-2.5 space-y-0.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold text-fg">Free</span>
+        <span className="text-xs text-fg">₱0</span>
+      </div>
+      <div className="text-xs text-fg-muted">Songs, Bible, projection at Schedule. Walang account na kailangan.</div>
+    </div>
+    {info.plans.map((p) => (
+      <div key={p.id} className="rounded-lg border border-line p-2.5 space-y-0.5" data-testid={`price-${p.id}`}>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold text-fg">{p.name}</span>
+          <span className="text-xs text-fg text-right">
+            {peso(p.monthly)} / buwan · {peso(p.yearly)} / taon
+          </span>
+        </div>
+        <div className="text-xs text-fg-muted">{INCLUDES[p.id] ?? ""}</div>
+        {(!info.enabled || !p.available) && <div className="text-xs text-fg-subtle">Malapit na ang online na bayad.</div>}
+      </div>
+    ))}
+    <p className="text-xs text-fg-subtle">Ang 1 taon ay 2 buwan na libre. Isang beses na bayad (GCash, card) — walang kusang sinisingil ulit.</p>
+  </div>
+);
+
+export const PlanSection: React.FC<Props> = ({ plan, returned, onStart, startLabel }) => {
   const [info, setInfo] = useState<BillingInfo | null>(null);
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,7 +81,7 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
     void getBillingInfo().then((i) => {
       if (!alive) return;
       setInfo(i);
-      if (!i.enabled) return;
+      if (!i.enabled || onStart) return; // not logged in: price list only
       if (returned === "success") void check();
       else {
         void getBillingStatus().then((s) => alive && s && setStatus(s));
@@ -69,6 +105,18 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
   };
 
   if (!info) return null;
+  // 2026-11-18: not logged in — show the plans and one way in (sign-up / login).
+  if (onStart) {
+    if (!info.plans.length) return null;
+    return (
+      <div className="space-y-2.5 border-t border-line pt-3" data-testid="plan-preview">
+        <PriceList info={info} />
+        <button type="button" onClick={onStart} className="btn btn-secondary w-full" data-testid="plan-start">
+          {startLabel ?? "Gumawa ng account para mag-subscribe"}
+        </button>
+      </div>
+    );
+  }
   const daysLeft = status?.expiresAt ? Math.ceil((Date.parse(status.expiresAt) - Date.now()) / 86400_000) : null;
 
   return (
@@ -92,18 +140,24 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
         </p>
       )}
 
-      {info.enabled ? (
+      {info.enabled || plan === "free" ? (
         <>
+          {/* 2026-11-18: no PayMongo key on this server yet — same buttons, disabled, so users see where to buy. */}
+          {!info.enabled && (
+            <p className="text-xs notice-warn" data-testid="plan-soon">
+              Malapit na ang online na bayad. Hindi pa makakabili sa ngayon.
+            </p>
+          )}
           {info.plans.map((p) =>
             p.available ? (
               <div key={p.id} className="space-y-1.5 rounded-lg border border-line p-3">
                 <div className="text-xs font-semibold text-fg">{plan === p.id ? `Dagdagan ang ${p.name}` : plan === "basic" && p.id === "pro" ? `Mag-upgrade sa ${p.name}` : `Mag-subscribe sa ${p.name}`}</div>
                 <div className="text-xs text-fg-muted">{INCLUDES[p.id] ?? ""}</div>
                 <div className="grid grid-cols-2 gap-1.5">
-                  <button type="button" onClick={() => buy(p.id, "month")} disabled={busy} className="btn btn-secondary btn-sm" data-testid={`buy-${p.id}-month`}>
+                  <button type="button" onClick={() => buy(p.id, "month")} disabled={busy || !info.enabled} title={info.enabled ? undefined : "Malapit na"} className="btn btn-secondary btn-sm" data-testid={`buy-${p.id}-month`}>
                     1 buwan · {peso(p.monthly)}
                   </button>
-                  <button type="button" onClick={() => buy(p.id, "year")} disabled={busy} className="btn btn-primary btn-sm" data-testid={`buy-${p.id}-year`}>
+                  <button type="button" onClick={() => buy(p.id, "year")} disabled={busy || !info.enabled} title={info.enabled ? undefined : "Malapit na"} className="btn btn-primary btn-sm" data-testid={`buy-${p.id}-year`}>
                     1 taon · {peso(p.yearly)}
                   </button>
                 </div>
@@ -124,8 +178,6 @@ export const PlanSection: React.FC<Props> = ({ plan, returned }) => {
             </div>
           )}
         </>
-      ) : plan === "free" ? (
-        <p className="text-xs text-fg-subtle">Wala pang online na bayad sa server na ito.</p>
       ) : null}
     </div>
   );
