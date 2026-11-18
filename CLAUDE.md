@@ -143,6 +143,10 @@ Still open / next:
   production bundle was run directly with node as "hosted" + "laptop" and tested.
 - Before real customers: backups of the `couch-data` volume, storage quota per church (media
   videos can be 200 MB each), password reset, service worker (app shell offline on the hosted site).
+- Plans before login (2026-11-18, Jack): the Account window's login form shows the price list
+  (`PlanSection` with `onStart` → read-only `PriceList`, prices from `/api/billing/plans`) and one
+  button to sign-up / login. With no PayMongo key on the server, a Free user still sees the buy
+  buttons, disabled, with "Malapit na ang online na bayad".
 - Checkout started on a laptop returns to the HOSTED site (`APP_URL`), where the user may not be
   logged in; the laptop's "Nakabayad na ako — i-check" button covers it.
 - Offline cache (14 days) can outlive a plan's end date by up to 14 days; fine for a soft lock.
@@ -217,3 +221,5 @@ Done (2026-11-17), code only: NOT yet run against a real Firebase project (Jack 
   tablets / phones. Tested with a real local server + CouchDB-compatible login, two remotes.
 - 2026-11-17: Team sync built (Firebase Auth + Firestore, songs only; CouchDB sync skips songs while
   it is on). Tested with a stand-in Firestore + the real Auth emulator; not yet on a real project.
+- 2026-11-18: (Jack) Plans and prices shown in the Account window before login; buy buttons shown
+  disabled when the server has no PayMongo key yet.
