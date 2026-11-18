@@ -4,6 +4,7 @@
  * Saved in this browser (lib/logoStore.ts); the picture / video stays in the Media tab.
  */
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Save, Info } from "lucide-react";
 import type { LiveState } from "../types";
 import { LOGO_TEXT_MAX, LogoSettings, getLogoSettings, setLogoSettings, withLogo, LogoFrame } from "../lib/logoStore";
@@ -57,7 +58,7 @@ export const LogoSettingsModal: React.FC<Props> = ({ liveState, onClose, onSaved
 
   const setBg = (v: SongBgValue) => setDraft((d) => ({ ...d, bgId: v.bgId, bgSettings: v.bgSettings }));
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Logo settings">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative bg-surface w-full sm:w-[96vw] sm:max-w-[1300px] h-[94dvh] sm:h-[88vh] flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line">
@@ -125,6 +126,9 @@ export const LogoSettingsModal: React.FC<Props> = ({ liveState, onClose, onSaved
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    // 2026-11-18: portal to <body> — the frosted-glass backdrop-filter on .panel/header
+    // (app background on) traps position:fixed inside the panel, so dialogs got squeezed.
+    document.body,
   );
 };

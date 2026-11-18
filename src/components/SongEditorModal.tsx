@@ -10,6 +10,7 @@
  *   every copy in the schedule + the live screen), or — "Para sa schedule na ito lang" — only that item.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Save, Image as ImageIcon, Rows3, Search, ExternalLink } from "lucide-react";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
 import { ChordSheet } from "./ChordSheet";
@@ -123,7 +124,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
     else onSave(draft);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={mode === "new" ? "New song" : "Edit song"}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <form
@@ -302,6 +303,9 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({ mode, initial,
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    // 2026-11-18: portal to <body> — the frosted-glass backdrop-filter on .panel/header
+    // (app background on) traps position:fixed inside the panel, so dialogs got squeezed.
+    document.body,
   );
 };

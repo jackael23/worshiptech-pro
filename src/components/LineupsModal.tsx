@@ -4,6 +4,7 @@
  * See lib/lineupStore.ts.
  */
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, FolderOpen, Lock, Save, Trash2, X } from "lucide-react";
 import type { ScheduleItem } from "../types";
 import type { AuthState } from "../lib/auth";
@@ -96,7 +97,7 @@ export const LineupsModal: React.FC<Props> = ({ allowed, auth, items, isLive, on
     void refresh();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Lineups">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative bg-surface w-full sm:max-w-lg max-h-[90dvh] flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line" data-testid="lineups-modal">
@@ -209,6 +210,9 @@ export const LineupsModal: React.FC<Props> = ({ allowed, auth, items, isLive, on
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    // 2026-11-18: portal to <body> — the frosted-glass backdrop-filter on .panel/header
+    // (app background on) traps position:fixed inside the panel, so dialogs got squeezed.
+    document.body,
   );
 };

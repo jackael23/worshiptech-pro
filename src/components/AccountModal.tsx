@@ -3,6 +3,7 @@
  * Login is optional: songs, Bible and projection work without it. See lib/auth.ts.
  */
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LogIn, LogOut, UserPlus, WifiOff, X } from "lucide-react";
 import { AuthState, PASSWORD_MIN, getAuthConfig, login, logout, signup } from "../lib/auth";
 import { PLAN_LABEL, planFromRoles } from "../lib/entitlements";
@@ -76,7 +77,7 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
     emailRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Account">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative bg-surface w-full sm:max-w-sm max-h-[92dvh] overflow-y-auto flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line" data-testid="account-modal">
@@ -170,6 +171,9 @@ export const AccountModal: React.FC<Props> = ({ auth, returned = null, onClose }
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    // 2026-11-18: portal to <body> — the frosted-glass backdrop-filter on .panel/header
+    // (app background on) traps position:fixed inside the panel, so dialogs got squeezed.
+    document.body,
   );
 };

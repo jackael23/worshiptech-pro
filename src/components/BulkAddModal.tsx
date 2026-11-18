@@ -10,6 +10,7 @@
  *   checked songs at once (picture / video / built-in — saved as an id, see songBackground.ts).
  */
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Save, AlertTriangle, ListPlus, FolderOpen, Presentation, Info, Pencil, Image as ImageIcon, Check } from "lucide-react";
 import { BulkSong, parseBulkText, replaceSongInText, validateDraft } from "../lib/bulkPaste";
 import { parseLyricsWithRanges } from "../lib/lyricsParser";
@@ -254,7 +255,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
     </div>
   );
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={mode === "paste" ? "Bulk Add songs" : title || "Import folder"}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => !dirty && onClose()} />
       <div className="relative bg-surface w-full sm:w-[97vw] sm:max-w-[1600px] h-[94dvh] sm:h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl shadow-lg border border-line">
@@ -469,6 +470,9 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({ mode, initialSongs, 
       {editing !== null && songs[editing] && (
         <SongEditorModal mode="bulk" initial={draftWithBg(songs[editing])} onSave={(d) => handleEdited(editing, d)} onClose={() => setEditing(null)} />
       )}
-    </div>
+    </div>,
+    // 2026-11-18: portal to <body> — the frosted-glass backdrop-filter on .panel/header
+    // (app background on) traps position:fixed inside the panel, so dialogs got squeezed.
+    document.body,
   );
 };
