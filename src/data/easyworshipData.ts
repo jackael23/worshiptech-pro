@@ -113,20 +113,6 @@ export const SAMPLE_SONGS: SongItem[] = [
   },
 ];
 
-// 2026-10-20 (Jarvis): popular modern songs as REFERENCE ONLY (title + artist, NO lyrics).
-// The user adds the lyrics themselves into "My Songs" (saved in their own browser).
-export const SONGSELECT_SEARCH_URL = "https://songselect.ccli.com/search/results?search=";
-
-export const REFERENCE_SONGS: SongItem[] = [
-  { id: "ref-1", title: "What a Beautiful Name", author: "Hillsong Worship", slides: [], source: "reference" },
-  { id: "ref-2", title: "Cornerstone", author: "Hillsong Worship", slides: [], source: "reference" },
-  { id: "ref-3", title: "Mighty to Save", author: "Hillsong Worship", slides: [], source: "reference" },
-  { id: "ref-4", title: "Oceans (Where Feet May Fail)", author: "Hillsong UNITED", slides: [], source: "reference" },
-  { id: "ref-5", title: "Way Maker", author: "Sinach", slides: [], source: "reference" },
-  { id: "ref-6", title: "Goodness of God", author: "Bethel Music", slides: [], source: "reference" },
-  { id: "ref-7", title: "10,000 Reasons (Bless the Lord)", author: "Matt Redman", slides: [], source: "reference" },
-  { id: "ref-8", title: "Build My Life", author: "Pat Barrett / Housefires", slides: [], source: "reference" },
-];
 
 // 2026-10-20 (Jarvis): Bible versions in the simulator.
 //  - Tagalog Ang Biblia (1905) and KJV: public domain.
@@ -286,7 +272,7 @@ export const WORKFLOW_GUIDES: WorkflowGuide[] = [
         title: "Open Media Library",
         titleTl: "Pumunta sa Media Library",
         panel: "Media Library",
-        description: "Locate the 'Media Library' dock (usually bottom-left panel in EW7/EW6) and click the 'Songs' icon tab.",
+        description: "Locate the 'Media Library' dock (usually the bottom-left panel) and click the 'Songs' icon tab.",
         descriptionTl: "Pumunta sa 'Media Library' panel at i-click ang 'Songs' icon.",
       },
       {
@@ -349,7 +335,7 @@ export const WORKFLOW_GUIDES: WorkflowGuide[] = [
         panel: "Media Library",
         description: "Type the book name, chapter, and verse (e.g., 'John 3:16' or 'Rom 8:28') in the search field.",
         descriptionTl: "I-type ang 'John 3:16' sa search field.",
-        proTip: "EasyWorship auto-completes book names as you type.",
+        proTip: "Book names auto-complete as you type.",
       },
       {
         stepNumber: 4,
@@ -373,11 +359,11 @@ export const WORKFLOW_GUIDES: WorkflowGuide[] = [
     steps: [
       {
         stepNumber: 1,
-        title: "Enable NDI in EasyWorship",
-        titleTl: "I-on ang NDI sa EasyWorship",
+        title: "Enable NDI Output",
+        titleTl: "I-on ang NDI Output",
         panel: "Options Menu",
         description: "Go to 'Edit' > 'Options' > 'Live Output' (or 'Output' menu). Change output to 'NDI Output' and check enable.",
-        descriptionTl: "Sa EasyWorship 'Output' menu, siguruhing naka-on ang NDI support.",
+        descriptionTl: "Sa 'Output' menu ng presentation software, siguruhing naka-on ang NDI support.",
         proTip: "Requires NewTek NDI Tools installed on both machines if running across two computers.",
       },
       {
@@ -385,23 +371,23 @@ export const WORKFLOW_GUIDES: WorkflowGuide[] = [
         title: "Add NDI Source in OBS",
         titleTl: "Magdagdag ng NDI Source sa OBS",
         panel: "Options Menu",
-        description: "Open OBS Studio. Under Sources, click '+' and select 'NDI™ Source'. Name it 'EasyWorship Lyrics'.",
+        description: "Open OBS Studio. Under Sources, click '+' and select 'NDI™ Source'. Name it 'Lyrics'.",
         descriptionTl: "Sa OBS, magdagdag ng bagong 'NDI Source'.",
       },
       {
         stepNumber: 3,
-        title: "Select EasyWorship Feed",
-        titleTl: "Piliin ang EasyWorship Output",
+        title: "Select the Lyrics Feed",
+        titleTl: "Piliin ang Lyrics Output",
         panel: "Options Menu",
-        description: "In the NDI source properties dropdown, select the EasyWorship computer feed from the network list.",
-        descriptionTl: "I-select ang EasyWorship output mula sa network list.",
+        description: "In the NDI source properties dropdown, select the presentation computer's feed from the network list.",
+        descriptionTl: "I-select ang output ng presentation computer mula sa network list.",
       },
       {
         stepNumber: 4,
         title: "Transparent Lower-Third Filter",
         titleTl: "I-set ang Alpha / Lower-Third",
         panel: "LIVE Output",
-        description: "In EasyWorship, apply a Lower-Third theme with black or transparent alpha background so video camera feeds show underneath the lyrics.",
+        description: "In the presentation software, apply a Lower-Third theme with black or transparent alpha background so video camera feeds show underneath the lyrics.",
         descriptionTl: "Malinis na output na may transparent background para sa camera video.",
       },
     ],

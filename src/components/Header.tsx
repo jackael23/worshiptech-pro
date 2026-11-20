@@ -7,7 +7,7 @@
  * 2026-11-07 (b): Full screen button (like F11) — Esc or the same button exits.
  */
 import React, { useEffect, useState } from "react";
-import { EasyWorshipVersion, SupportedLanguage } from "../types";
+import { EasyWorshipVersion, SupportedLanguage, versionLabel } from "../types";
 import { BookOpen, Layers, Keyboard, MessageSquare, Palette, MonitorPlay, Maximize, Minimize, CircleUserRound } from "lucide-react";
 import { AppearancePanel } from "./AppearancePanel";
 import { AccountModal } from "./AccountModal";
@@ -37,7 +37,7 @@ export type Theme = "dark" | "light";
 
 export const NAV_ITEMS: { id: AppTab; label: string; icon: React.ElementType; hint: string }[] = [
   // 2026-10-29: Simulator first — it's the main screen now (opens by default)
-  { id: "simulator", label: "Simulator", icon: Layers, hint: "Practice EasyWorship" },
+  { id: "simulator", label: "Simulator", icon: Layers, hint: "Practice the live workflow" },
   { id: "chat", label: "Chat", icon: MessageSquare, hint: "AI chat" }, // 2026-10-29: was "Assistant" (sabi ni Jack)
   { id: "guides", label: "Guides", icon: BookOpen, hint: "Step-by-step workflow guides" },
   { id: "shortcuts", label: "Hotkeys", icon: Keyboard, hint: "Hotkeys cheat sheet" },
@@ -117,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
           </div>
           <div className="leading-tight">
             <div className="font-display text-base font-medium tracking-tight text-fg max-[419px]:sr-only">WorshipTech-Pro</div>
-            <div className="hidden text-xs text-fg-subtle sm:block">EasyWorship companion</div>
+            <div className="hidden text-xs text-fg-subtle sm:block">Church presentation companion</div>
           </div>
         </div>
 
@@ -160,12 +160,12 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
           {/* EW version + language in one box (two real dropdowns) */}
           <div className="flex items-center rounded-md border border-line bg-surface-2">
           <label className="sr-only" htmlFor="ew-version">
-            EasyWorship version
+            Software version
           </label>
-          <select id="ew-version" value={version} onChange={(e) => setVersion(e.target.value as EasyWorshipVersion)} className={groupSelectCls} style={chevron} title="EasyWorship version">
+          <select id="ew-version" value={version} onChange={(e) => setVersion(e.target.value as EasyWorshipVersion)} className={groupSelectCls} style={chevron} title="Software version">
             {VERSIONS.map((v) => (
               <option key={v} value={v}>
-                {v.replace("EasyWorship ", "EW ")}
+                {versionLabel(v)}
               </option>
             ))}
           </select>

@@ -12,7 +12,7 @@ import {
   Tv,
   Layers,
 } from "lucide-react";
-import { WorkflowGuide, SupportedLanguage, EasyWorshipVersion } from "../types";
+import { WorkflowGuide, SupportedLanguage, EasyWorshipVersion, versionLabel } from "../types";
 import { WORKFLOW_GUIDES } from "../data/easyworshipData";
 
 interface VisualGuidesDeckProps {
@@ -100,7 +100,7 @@ export const VisualGuidesDeck: React.FC<VisualGuidesDeckProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full bg-accent-soft text-accent-text border border-accent/30 text-xs font-bold uppercase tracking-wider">
                   Category: {currentGuide.category}
                 </span>
-                <span className="text-xs text-fg-muted font-medium">Target: {version}</span>
+                <span className="text-xs text-fg-muted font-medium">Target: {versionLabel(version)}</span>
               </div>
               <h3 className="font-display text-xl sm:text-2xl font-medium tracking-tight text-fg">
                 {language === "Tagalog" ? currentGuide.titleTl : currentGuide.title}

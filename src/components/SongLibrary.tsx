@@ -11,9 +11,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Pencil, Trash2, Download, Upload, ExternalLink, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon, Presentation } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, FilePlus2, AlertTriangle, ListPlus, FolderOpen, Image as ImageIcon, Presentation } from "lucide-react";
 import { SongItem } from "../types";
-import { SAMPLE_SONGS, REFERENCE_SONGS, SONGSELECT_SEARCH_URL } from "../data/easyworshipData";
+import { SAMPLE_SONGS } from "../data/easyworshipData";
 import {
   StoredSong,
   SongDraft,
@@ -378,9 +378,8 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
     !q || s.title.toLowerCase().includes(q) || (s.author || "").toLowerCase().includes(q);
 
   const myItems = useMemo(() => mySongs.map(toSongItem), [mySongs]);
-  // 2026-11-16 (b): hymns and My Songs mixed A–Z; the titles without lyrics (reference) come after them
-  const songRows = [...myItems, ...SAMPLE_SONGS].filter(matches).sort(byTitle);
-  const rows: SongItem[] = [...songRows, ...REFERENCE_SONGS.filter(matches).sort(byTitle)];
+  // 2026-11-16 (b): hymns and My Songs mixed A–Z. 2026-11-19 (Jarvis): reference titles without lyrics removed (Jack)
+  const rows: SongItem[] = [...myItems, ...SAMPLE_SONGS].filter(matches).sort(byTitle);
 
   // My Songs toolbar — quiet links. Phones: above the list. Desktop: the bottom of the Library card (footerSlot).
   const inFooter = isDesktop && !!footerSlot;
@@ -459,43 +458,39 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
       {rows.length === 0 && <p className="text-xs text-fg-subtle p-2">Walang tugma sa "{searchQuery}".</p>}
 
       {/* Song rows */}
-      {rows.map((song, idx) => {
+      {rows.map((song) => {
         const isUser = song.source === "user";
-        const isRef = song.source === "reference";
-        const hue = isRef ? undefined : keyHue(song.key);
+        const hue = keyHue(song.key);
         return (
           <React.Fragment key={song.id}>
-          {isRef && idx === songRows.length && <div className="eyebrow px-2.5 pb-0.5 pt-3 tracking-[0.14em]">Wala pang lyrics</div>}
           <div
             onDoubleClick={(e) => {
               // ignore double-clicks on the row's own buttons/links
-              if (isRef || !onLiveSong || (e.target as HTMLElement).closest("button, a")) return;
+              if (!onLiveSong || (e.target as HTMLElement).closest("button, a")) return;
               void withBackground(song).then(onLiveSong);
             }}
-            title={isRef ? undefined : "Double-click = Add + LIVE"}
-            className={`song-row mb-0.5 hover:bg-surface-2 rounded-lg p-2.5 transition-colors text-xs group ${isRef ? "" : "cursor-pointer select-none touch-manipulation"}`}
+            title="Double-click = Add + LIVE"
+            className={`song-row mb-0.5 hover:bg-surface-2 rounded-lg p-2.5 transition-colors text-xs group cursor-pointer select-none touch-manipulation`}
           >
             <div className="flex items-center justify-between gap-3">
-              {/* 2026-11-15 (Sanctuary): key tile, like the mockup (— = no key / reference) */}
+              {/* 2026-11-15 (Sanctuary): key tile, like the mockup */}
               <span
                 className={`grid h-9.5 w-9.5 shrink-0 place-items-center rounded-md border font-display text-[15px] font-medium ${
-                  isRef ? "border-dashed border-line-strong text-fg-subtle" : hue !== undefined ? "key-tile" : "border-accent/25 bg-accent-soft text-accent-text"
+                  hue !== undefined ? "key-tile" : "border-accent/25 bg-accent-soft text-accent-text"
                 }`}
                 style={hue !== undefined ? ({ "--key-hue": hue } as React.CSSProperties) : undefined}
                 aria-hidden
               >
-                {isRef ? "—" : song.key || "♪"}
+                {song.key || "♪"}
               </span>
               <div className="flex-1 min-w-0">
-                <div className={`text-sm font-semibold truncate flex items-center gap-1.5 ${isRef ? "text-fg-muted" : "text-fg"}`}>
+                <div className={`text-sm font-semibold truncate flex items-center gap-1.5 text-fg`}>
                   <span className="truncate">{song.title}</span>
                   {isUser && <span className="shrink-0 px-1.5 rounded bg-accent-soft text-accent-text border border-accent/30 text-xs font-medium">My Song</span>}
                   {isUser && song.bgId && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-accent-text" aria-label="May sariling background" />}
                 </div>
                 <div className="text-xs text-fg-subtle flex items-center gap-1 mt-0.5 min-w-0">
-                  {isRef ? (
-                    <span className="truncate">{song.author || "Reference"}</span>
-                  ) : (
+                  {
                     // 2026-11-16 (b): "Author · 4 slides" like the mockup (only the author is cut short when it is long)
                     <>
                       {song.author && <span className="truncate">{song.author}</span>}
@@ -504,35 +499,11 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                         {song.slides.length} {song.slides.length === 1 ? "slide" : "slides"}
                       </span>
                     </>
-                  )}
+                  }
                 </div>
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
-                {isRef ? (
-                  <>
-                    <a
-                      href={`${SONGSELECT_SEARCH_URL}${encodeURIComponent(song.title)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="icon-btn row-actions-quiet"
-                      title="Hanapin sa CCLI SongSelect (kailangan ng account)"
-                      aria-label={`Hanapin ang ${song.title} sa SongSelect`}
-                    >
-                      <ExternalLink />
-                      {/* 2026-10-28: icon only, so the song title has room */}
-                    </a>
-                    <button
-                      onClick={() => setEditor({ mode: "new", initial: { title: song.title, author: song.author } })}
-                      className={`${smallBtn} h-8 border-line-strong text-fg-muted hover:border-accent hover:text-accent-text`}
-                      title="Gumawa ng My Song at i-paste ang lyrics"
-                      aria-label={`Add lyrics: ${song.title}`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Lyrics
-                    </button>
-                  </>
-                ) : (
                   <>
                     {isUser && confirmDeleteId !== song.id && (
                       // 2026-11-16 (b): quiet rows — Edit / Delete show on hover or focus on a mouse-driven desktop (phones: always)
@@ -578,7 +549,6 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
                       </button>
                     )}
                   </>
-                )}
               </div>
             </div>
           </div>

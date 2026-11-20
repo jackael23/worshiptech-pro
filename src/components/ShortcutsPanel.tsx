@@ -1,7 +1,7 @@
 import React from "react";
 import { Keyboard, Zap, Sparkles, AlertTriangle, Layers, Tv, HelpCircle } from "lucide-react";
 import { EASYWORSHIP_SHORTCUTS, HOTKEYS_SOURCE_URL, HOTKEYS_VERIFIED_FOR } from "../data/easyworshipData";
-import { EasyWorshipVersion } from "../types";
+import { EasyWorshipVersion, versionLabel } from "../types";
 
 interface ShortcutsPanelProps {
   version: EasyWorshipVersion;
@@ -21,18 +21,18 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({ version, onAskAI
         <div>
           <h2 className="font-display text-lg sm:text-xl font-medium tracking-tight text-fg flex items-center gap-2">
             <Keyboard className="w-5 h-5 text-accent-text" />
-            <span>EasyWorship Hotkeys & Version Comparison</span>
+            <span>Hotkeys & Version Comparison</span>
           </h2>
           <p className="text-xs text-fg-muted mt-0.5">
-            Official keyboard shortcuts for {HOTKEYS_VERIFIED_FOR} (
+            Official keyboard shortcuts for {versionLabel(HOTKEYS_VERIFIED_FOR)} (
             <a href={HOTKEYS_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">
-              EasyWorship support
+              official support
             </a>
             ).
           </p>
           {!isVerifiedVersion && (
             <p className="text-xs text-warn-text bg-warn-soft border border-warn/40 rounded-md px-2 py-1 mt-2">
-              {version}: hindi pa na-verify ang listahang ito. I-check sa Help menu ng software bago gamitin sa live service.
+              {versionLabel(version)}: hindi pa na-verify ang listahang ito. I-check sa Help menu ng software bago gamitin sa live service.
             </p>
           )}
         </div>
@@ -121,7 +121,7 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({ version, onAskAI
       <div className="bg-surface border border-line rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="text-sm font-bold text-fg uppercase tracking-wider flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-accent-text" />
-          <span>EasyWorship Version Differences & Capabilities</span>
+          <span>Version Differences & Capabilities</span>
         </h3>
 
         <div className="overflow-x-auto">
@@ -129,9 +129,9 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({ version, onAskAI
             <thead>
               <tr className="border-b border-line bg-surface-2 text-fg-muted font-semibold">
                 <th className="py-2.5 px-3">Feature Capability</th>
-                <th className="py-2.5 px-3">EasyWorship 2009</th>
-                <th className="py-2.5 px-3">EasyWorship 6</th>
-                <th className="py-2.5 px-3 text-accent-text font-bold">EasyWorship 7 / Modern</th>
+                <th className="py-2.5 px-3">v2009</th>
+                <th className="py-2.5 px-3">v6</th>
+                <th className="py-2.5 px-3 text-accent-text font-bold">v7 / Modern</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line text-fg-muted">

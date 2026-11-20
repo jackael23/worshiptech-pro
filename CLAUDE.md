@@ -217,3 +217,5 @@ Done (2026-11-17), code only: NOT yet run against a real Firebase project (Jack 
   tablets / phones. Tested with a real local server + CouchDB-compatible login, two remotes.
 - 2026-11-17: Team sync built (Firebase Auth + Firestore, songs only; CouchDB sync skips songs while
   it is on). Tested with a stand-in Firestore + the real Auth emulator; not yet on a real project.
+- 2026-11-19: Landing page at `/welcome` (`welcome.html`, plain HTML/CSS + `src/welcome.ts` for the bundled
+  fonts; second Vite input; Firebase rewrite + prod Express route). App stays at `/`. index.html meta no longer says "AI".

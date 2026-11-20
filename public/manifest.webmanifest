@@ -1,7 +1,7 @@
 {
   "name": "WorshipTech-Pro",
   "short_name": "WorshipTech",
-  "description": "EasyWorship companion: AI assistant at practice simulator para sa church media volunteers.",
+  "description": "Church presentation companion: AI assistant at practice simulator para sa church media volunteers.",
   "display": "standalone",
   "background_color": "#111113",
   "theme_color": "#111113",

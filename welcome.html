@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="fil">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WorshipTech-Pro — Worship presentation para sa simbahang Pilipino</title>
+<meta name="description" content="Lyrics, Bible at slides sa projector — libre, Tagalog-ready, bukas agad sa browser. Para sa simbahang Pilipino." />
+<!-- 2026-11-19 (Jarvis): landing page at /welcome (growth plan wtp-20). Plain HTML + CSS, no React,
+     so it loads fast; app links go to "/". Fonts are the bundled ones (src/welcome.ts). -->
+<meta name="theme-color" content="#0b0d17" />
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<meta property="og:title" content="WorshipTech-Pro — Worship presentation para sa simbahang Pilipino" />
+<meta property="og:description" content="Lyrics, Bible at slides sa projector — libre, Tagalog-ready, bukas agad sa browser." />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<script type="module" src="/src/welcome.ts"></script>
+<style>
+  :root{
+    --canvas:#0b0d17; --surface:#12141f; --surface-2:#171a27; --surface-3:#1f2232;
+    --line:#2f3346; --line-strong:#454a63;
+    --fg:#f3efe6; --fg-muted:#c9c4b8; --fg-subtle:#a9a49a;
+    --accent:#e8b86a; --accent-hover:#f3d29a; --accent-soft:rgb(232 184 106 / .14); --on-accent:#1a1408;
+    --live:#ff5a5f; --ok:#7fd1a8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--canvas);color:var(--fg);font-family:"Inter Variable",system-ui,"Segoe UI",sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+  h1,h2,h3{font-family:"Fraunces Variable",Georgia,serif;font-weight:600;line-height:1.15;letter-spacing:-.01em}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:12px;font-weight:600;font-size:16px;transition:.15s}
+  .btn-primary{background:var(--accent);color:var(--on-accent)}
+  .btn-primary:hover{background:var(--accent-hover)}
+  .btn-ghost{border:1px solid var(--line-strong);color:var(--fg)}
+  .btn-ghost:hover{background:var(--surface-2)}
+  .eyebrow{display:inline-block;font-size:13px;font-weight:600;color:var(--accent);background:var(--accent-soft);padding:4px 12px;border-radius:999px}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:10;background:rgb(11 13 23 / .85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+  .brand-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#b8862e);display:grid;place-items:center}
+  .nav-links{display:flex;gap:24px;align-items:center;font-size:15px;color:var(--fg-muted)}
+  .nav-links a:hover{color:var(--fg)}
+  .nav-links .btn{min-height:40px;padding:0 16px;font-size:15px}
+
+  /* hero */
+  .hero{padding:72px 0 40px;text-align:center;background:radial-gradient(ellipse 70% 50% at 50% 0%,rgb(232 184 106 / .12),transparent 70%)}
+  .hero h1{font-size:clamp(34px,5.5vw,58px);max-width:820px;margin:18px auto 18px}
+  .hero h1 em{font-style:normal;color:var(--accent)}
+  .hero p.lead{font-size:clamp(17px,2vw,20px);color:var(--fg-muted);max-width:640px;margin:0 auto 30px}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .hero small{display:block;margin-top:14px;color:var(--fg-subtle);font-size:14px}
+
+  /* app preview */
+  .preview{margin:48px auto 0;max-width:980px;border:1px solid var(--line-strong);border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 30px 80px rgb(0 0 0 / .45)}
+  .pv-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--line-strong)}
+  .pv-bar span.t{margin-left:8px;font-size:12px;color:var(--fg-subtle)}
+  .pv-body{display:grid;grid-template-columns:1fr 1.1fr 1.6fr;gap:1px;background:var(--line);text-align:left}
+  .pv-col{background:var(--surface);padding:14px;min-height:280px}
+  .pv-h{font-size:12px;font-weight:600;color:var(--fg-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .pv-item{font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px;color:var(--fg-muted);background:var(--surface-2)}
+  .pv-item.on{border-color:var(--accent);color:var(--fg);background:var(--accent-soft)}
+  .pv-item b{display:block;color:var(--fg);font-weight:600}
+  .live-tag{display:inline-block;font-size:11px;font-weight:700;background:var(--live);color:#fff;border-radius:6px;padding:1px 7px;margin-left:6px;vertical-align:middle}
+  .screen{aspect-ratio:16/9;border-radius:10px;background:linear-gradient(160deg,#1c2340,#0d0f1c 60%,#2a1d10);display:grid;place-items:center;text-align:center;padding:16px;border:1px solid var(--line-strong)}
+  .screen p{font-family:"Fraunces Variable",Georgia,serif;font-size:clamp(14px,1.8vw,21px);line-height:1.4;color:#fff;text-shadow:0 2px 8px rgb(0 0 0 / .6)}
+  .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  .thumbs div{aspect-ratio:16/9;border-radius:6px;background:var(--surface-3);border:1px solid var(--line);font-size:10px;color:var(--fg-subtle);display:grid;place-items:center}
+  .thumbs div.on{border-color:var(--live);color:var(--fg)}
+
+  section{padding:80px 0}
+  .sec-head{text-align:center;max-width:680px;margin:0 auto 44px}
+  .sec-head h2{font-size:clamp(28px,3.6vw,40px);margin:14px 0 12px}
+  .sec-head p{color:var(--fg-muted);font-size:17px}
+
+  /* features */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .card .ic{width:42px;height:42px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;margin-bottom:14px}
+  .card .ic svg{width:22px;height:22px;stroke:var(--accent)}
+  .card h3{font-size:19px;margin-bottom:6px}
+  .card p{font-size:15px;color:var(--fg-muted)}
+
+  /* why */
+  .why{background:var(--surface)}
+  .why-list{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:880px;margin:0 auto}
+  .why-item{display:flex;gap:14px;padding:18px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line)}
+  .check{flex:0 0 26px;height:26px;border-radius:50%;background:rgb(127 209 168 / .15);color:var(--ok);display:grid;place-items:center;font-weight:700;font-size:14px}
+  .why-item b{display:block;margin-bottom:2px}
+  .why-item span{color:var(--fg-muted);font-size:15px}
+
+  /* steps */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
+  .step{padding:24px;border-radius:14px;border:1px solid var(--line);background:var(--surface);position:relative}
+  .step::before{counter-increment:s;content:counter(s);font-family:"Fraunces Variable",Georgia,serif;font-size:34px;color:var(--accent);display:block;margin-bottom:6px}
+  .step h3{font-size:19px;margin-bottom:6px}
+  .step p{color:var(--fg-muted);font-size:15px}
+
+  /* video placeholder */
+  .video{max-width:820px;margin:0 auto;aspect-ratio:16/9;border-radius:16px;border:2px dashed var(--line-strong);display:grid;place-items:center;text-align:center;color:var(--fg-subtle);background:var(--surface)}
+  .play{width:72px;height:72px;border-radius:50%;background:var(--accent);display:grid;place-items:center;margin:0 auto 12px}
+
+  /* pricing */
+  .prices{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:980px;margin:0 auto}
+  .price{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column}
+  .price.pop{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .price .tag{align-self:flex-start;font-size:12px;font-weight:700;color:var(--on-accent);background:var(--accent);border-radius:999px;padding:2px 10px;margin-bottom:10px}
+  .price h3{font-size:22px}
+  .amt{font-size:36px;font-weight:700;margin:10px 0 2px}
+  .amt small{font-size:15px;font-weight:500;color:var(--fg-subtle)}
+  .yr{font-size:14px;color:var(--fg-subtle);margin-bottom:16px}
+  .price ul{list-style:none;margin-bottom:22px;flex:1}
+  .price li{font-size:15px;color:var(--fg-muted);padding:6px 0 6px 24px;position:relative}
+  .price li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:700}
+  .note{text-align:center;color:var(--fg-subtle);font-size:14px;margin-top:20px}
+
+  /* faq */
+  .faq{max-width:760px;margin:0 auto}
+  details{border-bottom:1px solid var(--line);padding:18px 4px}
+  summary{cursor:pointer;font-weight:600;font-size:17px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+  summary::after{content:"+";color:var(--accent);font-size:22px;line-height:1}
+  details[open] summary::after{content:"–"}
+  details p{color:var(--fg-muted);margin-top:10px;font-size:15px}
+
+  .final{text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 100%,rgb(232 184 106 / .12),transparent 70%)}
+  .final h2{font-size:clamp(28px,4vw,44px);margin-bottom:14px}
+  .final p{color:var(--fg-muted);margin-bottom:28px;font-size:17px}
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--fg-subtle);font-size:14px}
+  footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:860px){
+    .nav-links a:not(.btn){display:none}
+    .grid,.steps,.prices{grid-template-columns:1fr}
+    .why-list{grid-template-columns:1fr}
+    .pv-body{grid-template-columns:1fr}
+    .pv-col.lib{display:none}
+    .pv-col{min-height:auto}
+    section{padding:60px 0}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a href="#" class="brand">
+      <span class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a1408" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M8 21h8"/></svg></span>
+      WorshipTech-Pro
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#presyo">Presyo</a>
+      <a href="#faq">FAQ</a>
+      <a href="/" class="btn btn-primary">Buksan ang app</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Para sa simbahang Pilipino</span>
+    <h1>Lyrics, Bible at slides sa projector, <em>libre</em> at Tagalog-ready.</h1>
+    <p class="lead">Bukas agad sa browser, walang install. Ihanda ang lineup, i-project ang kanta at talata, at kontrolin mula sa phone mo.</p>
+    <div class="cta-row">
+      <a href="/" class="btn btn-primary">Subukan nang libre →</a>
+      <a href="#demo" class="btn btn-ghost">▶ Panoorin ang demo</a>
+    </div>
+    <small>Walang account na kailangan para sa Free plan.</small>
+
+    <div class="preview" aria-label="Halimbawa ng operator screen">
+      <div class="pv-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">WorshipTech-Pro · Simulator</span></div>
+      <div class="pv-body">
+        <div class="pv-col lib">
+          <div class="pv-h">Library</div>
+          <div class="pv-item"><b>Amazing Grace</b>John Newton</div>
+          <div class="pv-item"><b>Holy, Holy, Holy</b>Reginald Heber</div>
+          <div class="pv-item"><b>Juan 3:16</b>Ang Biblia 1905</div>
+          <div class="pv-item"><b>Announcements.pptx</b>12 slides</div>
+        </div>
+        <div class="pv-col">
+          <div class="pv-h">Schedule · Linggo</div>
+          <div class="pv-item">Welcome slide</div>
+          <div class="pv-item on"><b>Amazing Grace <span class="live-tag">LIVE</span></b>Verse 1 · 4 slides</div>
+          <div class="pv-item">Juan 3:16</div>
+          <div class="pv-item">Announcements</div>
+        </div>
+        <div class="pv-col">
+          <div class="pv-h">Projector</div>
+          <div class="screen"><p>Amazing grace! how sweet the sound<br/>That saved a wretch like me!</p></div>
+          <div class="thumbs"><div class="on">Verse 1</div><div>Verse 2</div><div>Verse 3</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Features</span>
+      <h2>Lahat ng kailangan ng media team tuwing Linggo</h2>
+      <p>Mula sa paghahanda hanggang sa mismong service, nasa isang lugar na lahat.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><h3>Mga kanta</h3><p>I-paste ang lyrics at kusa itong mahahati sa slides. Puwede ring mag-import mula sa PowerPoint, SongSelect o ChordPro.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/></svg></div><h3>Tagalog at English Bible</h3><p>Kasama na ang Ang Biblia 1905 at KJV. I-type lang ang "Juan 3:16" at lalabas na agad.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M8 21h8"/></svg></div><h3>Projector at Stage screen</h3><p>Lyrics para sa kongregasyon sa projector, at lyrics na may chords para sa mga musikero sa stage.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div><h3>Phone remote</h3><p>Ilipat ang slide mula sa phone mo, kahit nasa harap ka o nasa stage.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></div><h3>Backgrounds at themes</h3><p>Larawan o video sa likod ng lyrics, may Dim at Blur para malinaw ang text.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h3>Team sync</h3><p>Iisang song library para sa buong worship team, sa lahat ng laptop.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Bakit WorshipTech-Pro</span>
+      <h2>Ginawa para sa simbahan dito sa atin</h2>
+    </div>
+    <div class="why-list">
+      <div class="why-item"><span class="check">✓</span><div><b>Tagalog at Taglish</b><span>Ang menu, help at Bible ay nasa wikang gamit ng volunteers mo.</span></div></div>
+      <div class="why-item"><span class="check">✓</span><div><b>Libre ang mahalaga</b><span>Kanta, Bible, projection at Schedule: ₱0, kahit walang account.</span></div></div>
+      <div class="why-item"><span class="check">✓</span><div><b>Walang install</b><span>Gumagana sa Chrome o Edge sa kahit anong laptop ng simbahan.</span></div></div>
+      <div class="why-item"><span class="check">✓</span><div><b>Madaling lumipat</b><span>Dalhin ang PowerPoint at song files na mayroon na kayo.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Demo</span>
+      <h2>Tingnan kung paano gumagana</h2>
+      <p>Mula sa pag-add ng kanta hanggang sa pag-project, wala pang 2 minuto.</p>
+    </div>
+    <div class="video"><div><div class="play"><svg width="26" height="26" viewBox="0 0 24 24" fill="#1a1408"><path d="M8 5v14l11-7z"/></svg></div>[Dito ilalagay ang demo video, mga 60–90 segundo]</div></div>
+  </div>
+</section>
+
+<section id="paano" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Magsimula sa 3 hakbang</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Buksan ang app</h3><p>I-click ang "Subukan nang libre." Walang download at walang sign-up.</p></div>
+      <div class="step"><h3>Idagdag ang kanta at talata</h3><p>I-paste ang lyrics o i-import ang PowerPoint, tapos ilagay sa Schedule.</p></div>
+      <div class="step"><h3>I-project</h3><p>Ikonekta ang projector, buksan ang output window, at pindutin ang Go Live.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="presyo" class="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Presyo</span>
+      <h2>Libre para magsimula</h2>
+      <p>Mag-upgrade lang kapag kailangan na ng team ninyo ang phone remote o cloud sync.</p>
+    </div>
+    <div class="prices">
+      <div class="price">
+        <h3>Free</h3>
+        <div class="amt">₱0</div>
+        <div class="yr">Habambuhay</div>
+        <ul><li>Mga kanta at Bible</li><li>Projector at Stage screen</li><li>Schedule at Go Live</li><li>Team sync ng kanta</li><li>Walang account na kailangan</li></ul>
+        <a href="/" class="btn btn-ghost">Simulan nang libre</a>
+      </div>
+      <div class="price pop">
+        <span class="tag">Rekomendado</span>
+        <h3>Basic</h3>
+        <div class="amt">₱299 <small>/ buwan</small></div>
+        <div class="yr">o ₱2,990 / taon (2 buwan libre)</div>
+        <ul><li>Lahat ng nasa Free</li><li>Phone remote</li><li>Naka-save na Lineups (planuhin ang susunod na Linggo)</li></ul>
+        <a href="/" class="btn btn-primary">Piliin ang Basic</a>
+      </div>
+      <div class="price">
+        <h3>Pro</h3>
+        <div class="amt">₱699 <small>/ buwan</small></div>
+        <div class="yr">o ₱6,990 / taon (2 buwan libre)</div>
+        <ul><li>Lahat ng nasa Basic</li><li>Cloud sync: kanta, Bible, PPT, media at lineups sa lahat ng computer ninyo</li></ul>
+        <a href="/" class="btn btn-ghost">Piliin ang Pro</a>
+      </div>
+    </div>
+    <p class="note">Isang beses na bayad gamit ang GCash o card, at walang kusang singil ulit. Malapit nang buksan ang online na bayad.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head"><span class="eyebrow">FAQ</span><h2>Mga madalas itanong</h2></div>
+    <div class="faq">
+      <details><summary>Libre ba talaga?</summary><p>Oo. Libre ang kanta, Bible, projection at Schedule, at hindi kailangan ng account. Ang Basic at Pro ay para lang sa phone remote, naka-save na lineups at cloud sync.</p></details>
+      <details><summary>Kailangan ba ng internet tuwing service?</summary><p>Kailangan ng internet para mabuksan ang app. Pagkabukas, sa laptop mismo naka-save ang mga kanta, Bible at slides ninyo. Malapit na rin ang buong offline mode.</p></details>
+      <details><summary>Paano ang copyright ng mga kanta?</summary><p>Public-domain hymns at Bible lang ang kasama sa app. Ang simbahan mismo ang naglalagay ng lyrics ng ibang kanta, sa ilalim ng sarili ninyong CCLI license.</p></details>
+      <details><summary>Anong computer ang kailangan?</summary><p>Kahit anong Windows o Mac laptop na may Chrome o Edge. Para sa projector, ikonekta lang ito bilang second screen.</p></details>
+      <details><summary>Gumagamit kami ng ibang presentation software o PowerPoint. Kaya bang lumipat?</summary><p>Oo. Kaya ninyong i-import ang PowerPoint slides at mga kanta mula sa SongSelect o ChordPro, o i-paste nang sabay-sabay ang maraming kanta.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <h2>Handa na para sa Linggo?</h2>
+    <p>Subukan ngayon. Libre at walang install.</p>
+    <a href="/" class="btn btn-primary">Buksan ang WorshipTech-Pro →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 WorshipTech-Pro</span>
+    <span>Ginawa sa Pilipinas para sa simbahang Pilipino</span>
+  </div>
+</footer>
+
+</body>
+</html>

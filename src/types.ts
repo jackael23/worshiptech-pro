@@ -1,5 +1,8 @@
 export type EasyWorshipVersion = "EasyWorship 7" | "EasyWorship 6" | "EasyWorship 2009";
 
+// 2026-11-19 (Jarvis): on-screen label for a version value, without the brand name (Jack): "EasyWorship 7" → "v7".
+export const versionLabel = (v: string): string => v.replace(/^EasyWorship\s*/i, "v");
+
 export type SupportedLanguage = "Tagalog" | "English" | "Taglish";
 
 export interface ChatMessage {

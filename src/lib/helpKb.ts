@@ -7,6 +7,10 @@
  *    (or official EasyWorship 7 behavior for the EW-only articles). Hotkeys come from easyworshipData.
  */
 import { HOTKEYS_SOURCE_URL, HOTKEYS_TEXT, HOTKEYS_VERIFIED_FOR } from "../data/easyworshipData";
+import { versionLabel } from "../types";
+
+// 2026-11-19 (Jarvis): show "v7", not the brand name (Jack)
+const HOTKEYS_FOR_LABEL = versionLabel(HOTKEYS_VERIFIED_FOR);
 
 export interface HelpArticle {
   id: string;
@@ -213,7 +217,7 @@ _No Bible yet? Press **Import Bible** in the Bibles tab and pick the Bible file 
     id: "hotkeys",
     title: { tl: "Hotkeys / shortcut keys", en: "Hotkeys / shortcut keys" },
     keywords: ["hotkey", "hotkeys", "shortcut", "shortcuts", "keyboard shortcut", "page down", "ctrl+b", "ctrl b", "ctrl+l", "ctrl+c", "black screen", "go live", "emergency", "itim", "blackout", "logo"],
-    tl: `**Mahahalagang keys (pareho sa app at sa ${HOTKEYS_VERIFIED_FOR}):**
+    tl: `**Mahahalagang keys (pareho sa app at sa ${HOTKEYS_FOR_LABEL}):**
 
 - **Page Down** = Go Live / susunod
 - **↑ / ↓** = nakaraan / susunod na slide
@@ -221,11 +225,11 @@ _No Bible yet? Press **Import Bible** in the Bibles tab and pick the Bible file 
 - **Ctrl + C** = Text on/off (background lang)
 - **Ctrl + L** = Logo (⚠️ *hindi* Go Live)
 
-**Buong listahan (${HOTKEYS_VERIFIED_FOR}):**
+**Buong listahan (${HOTKEYS_FOR_LABEL}):**
 ${HOTKEYS_TEXT}
 
-_Source: [EasyWorship support](${HOTKEYS_SOURCE_URL}). Sa EW6 / 2009, i-check sa Help menu._`,
-    en: `**Key shortcuts (same in the app and in ${HOTKEYS_VERIFIED_FOR}):**
+_Source: [Official support](${HOTKEYS_SOURCE_URL}). Sa v6 / v2009, i-check sa Help menu._`,
+    en: `**Key shortcuts (same in the app and in ${HOTKEYS_FOR_LABEL}):**
 
 - **Page Down** = Go Live / next
 - **↑ / ↓** = previous / next slide
@@ -233,10 +237,10 @@ _Source: [EasyWorship support](${HOTKEYS_SOURCE_URL}). Sa EW6 / 2009, i-check sa
 - **Ctrl + C** = Text on/off (background only)
 - **Ctrl + L** = Logo (⚠️ *not* Go Live)
 
-**Full list (${HOTKEYS_VERIFIED_FOR}):**
+**Full list (${HOTKEYS_FOR_LABEL}):**
 ${HOTKEYS_TEXT}
 
-_Source: [EasyWorship support](${HOTKEYS_SOURCE_URL}). For EW6 / 2009, check the Help menu._`,
+_Source: [Official support](${HOTKEYS_SOURCE_URL}). For v6 / v2009, check the Help menu._`,
   },
   {
     id: "projector",
@@ -392,35 +396,35 @@ _Everything is saved in this laptop's browser. Don't clear browser data without 
   },
   {
     id: "ew-ndi",
-    title: { tl: "EasyWorship: lyrics sa OBS (NDI)", en: "EasyWorship: lyrics in OBS (NDI)" },
+    title: { tl: "Lyrics sa OBS (NDI)", en: "Lyrics in OBS (NDI)" },
     keywords: ["ndi", "obs", "live stream", "livestream", "stream", "vmix", "lower third", "lower thirds", "facebook live", "youtube live"],
-    tl: `**EasyWorship → OBS gamit ang NDI (EW6/EW7):**
+    tl: `**Presentation software → OBS gamit ang NDI (v6/v7):**
 
-1. **EasyWorship:** i-enable ang **NDI output** sa settings ng Live Output.
-2. **OBS:** i-install ang NDI plugin, tapos **+** → **NDI™ Source** → piliin ang EasyWorship.
+1. **Presentation software:** i-enable ang **NDI output** sa settings ng Live Output.
+2. **OBS:** i-install ang NDI plugin, tapos **+** → **NDI™ Source** → piliin ang presentation computer.
 3. Para sa lower-third: gumamit ng theme na **transparent o itim** ang background.
 
-_Iba-iba ang menu sa bawat version. Kung hindi mo makita, i-check ang Help ng EasyWorship mo._`,
-    en: `**EasyWorship → OBS with NDI (EW6/EW7):**
+_Iba-iba ang menu sa bawat version. Kung hindi mo makita, i-check ang Help ng presentation software mo._`,
+    en: `**Presentation software → OBS with NDI (v6/v7):**
 
-1. **EasyWorship:** turn on **NDI output** in the Live Output settings.
-2. **OBS:** install the NDI plugin, then **+** → **NDI™ Source** → pick EasyWorship.
+1. **Presentation software:** turn on **NDI output** in the Live Output settings.
+2. **OBS:** install the NDI plugin, then **+** → **NDI™ Source** → pick the presentation computer.
 3. For lower-thirds: use a theme with a **transparent or black** background.
 
-_Menus differ between versions. If you can't find it, check your EasyWorship Help._`,
+_Menus differ between versions. If you can't find it, check your presentation software's Help._`,
   },
   {
     id: "ew-foldback",
-    title: { tl: "EasyWorship: Foldback / stage display", en: "EasyWorship: Foldback / stage display" },
+    title: { tl: "Foldback / stage display", en: "Foldback / stage display" },
     keywords: ["easyworship foldback", "foldback", "enable foldback", "foldback display", "ew foldback"],
-    tl: `**Foldback sa EasyWorship:**
+    tl: `**Foldback sa presentation software:**
 
 1. **Edit** → **Options** → **Foldback**.
 2. I-check ang **Enable Foldback**, tapos piliin ang monitor na nakaharap sa stage.
 3. Ayusin ang layout: orasan, kasalukuyang slide, at susunod na slide.
 
 _Dito sa app, ang katapat nito ay ang **Stage screen** (may chords pa para sa banda)._`,
-    en: `**Foldback in EasyWorship:**
+    en: `**Foldback in the presentation software:**
 
 1. **Edit** → **Options** → **Foldback**.
 2. Tick **Enable Foldback**, then pick the monitor facing the stage.
