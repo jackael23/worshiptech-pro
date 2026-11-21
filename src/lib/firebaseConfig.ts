@@ -7,11 +7,12 @@
  * What protects the data is firestore.rules. Habang walang laman ito, nakatago lang ang
  * Team sync at gumagana ang app gaya ng dati.
  */
+// 2026-11-21 (Mira): project "worshiptech-pro" (Web app "WorshipTech-Pro Web").
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  appId: "",
+  apiKey: "AIzaSyBgy5jwfKLH63fCot65xgkKPqGWkugy2to",
+  authDomain: "worshiptech-pro.firebaseapp.com",
+  projectId: "worshiptech-pro",
+  appId: "1:1002359696946:web:bbcfcfd33dcdb07dabd62b",
 };
 
 export const isFirebaseConfigured = (): boolean => !!(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
