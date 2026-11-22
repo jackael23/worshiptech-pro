@@ -32,3 +32,37 @@ const FEATURES: Record<Plan, readonly Feature[]> = {
 };
 
 export const hasFeature = (plan: Plan, feature: Feature): boolean => FEATURES[plan].includes(feature);
+
+// 2026-11-21 (Mira): with Google sign-in (Firebase) the plan lives in Firestore accounts/{uid}:
+// { plan: "basic" | "pro", expiresAt?: Timestamp | ISO string }. Only Jack (Firebase Console) or,
+// later, the payment server can write it; firestore.rules allow the owner to read it only.
+/** Days a plan keeps working after expiresAt (same grace as billingServer.ts). */
+export const PLAN_GRACE_DAYS = 3;
+
+/** Millis of a Firestore Timestamp, an ISO string or a number; null = none / unreadable. */
+function toMillis(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  }
+  const fn = (v as { toMillis?: unknown } | null)?.toMillis;
+  if (typeof fn === "function") {
+    const t = (fn as () => number).call(v);
+    return Number.isFinite(t) ? t : null;
+  }
+  return null;
+}
+
+/** Plan of an accounts/{uid} document (missing / unknown / ended = "free"). */
+export function planFromAccountDoc(data: unknown, now = Date.now()): { plan: Plan; expiresAt: string | null } {
+  const d = (data && typeof data === "object" ? data : {}) as { plan?: unknown; expiresAt?: unknown };
+  const plan: Plan = d.plan === "pro" || d.plan === "basic" ? d.plan : "free";
+  const end = toMillis(d.expiresAt);
+  const expiresAt = end === null ? null : new Date(end).toISOString();
+  if (plan !== "free" && end !== null && now > end + PLAN_GRACE_DAYS * 86400_000) return { plan: "free", expiresAt };
+  return { plan, expiresAt };
+}
+
+/** Roles that stand for a plan, so planFromRoles() and every hasFeature() check keep working. */
+export const rolesOfPlan = (plan: Plan): string[] => (plan === "free" ? [] : [PLAN_ROLE[plan]]);

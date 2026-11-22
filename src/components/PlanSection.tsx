@@ -21,6 +21,12 @@ interface Props {
 }
 
 const WARN_DAYS = 7;
+/**
+ * 2026-11-21 (Mira): while there is no online payment, a church pays by hand (e.g. GCash) and
+ * Jack turns on the plan in Firestore accounts/{uid}. Jack: put here how churches reach you
+ * (e.g. "Messenger: m.me/worshiptechpro" or a phone number). Empty = the line is not shown.
+ */
+const UPGRADE_CONTACT = "";
 const INCLUDES: Record<string, string> = { basic: "Phone remote at Lineups", pro: "Lahat ng nasa Basic + cloud sync (songs, Bible, PPT, media at lineups sa lahat ng computer ninyo)" };
 const niceDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
@@ -145,7 +151,8 @@ export const PlanSection: React.FC<Props> = ({ plan, returned, onStart, startLab
           {/* 2026-11-18: no PayMongo key on this server yet — same buttons, disabled, so users see where to buy. */}
           {!info.enabled && (
             <p className="text-xs notice-warn" data-testid="plan-soon">
-              Malapit na ang online na bayad. Hindi pa makakabili sa ngayon.
+              Malapit na ang online na bayad. Sa ngayon, para mag-upgrade: magbayad sa GCash at ipadala ang Account ID mo (nasa itaas). Bubuksan namin ang plan pagkatanggap.
+              {UPGRADE_CONTACT && <> Contact: <strong className="text-fg">{UPGRADE_CONTACT}</strong></>}
             </p>
           )}
           {info.plans.map((p) =>

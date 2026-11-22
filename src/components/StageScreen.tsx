@@ -27,6 +27,11 @@ export interface StagePrefs {
   size: number; // 0.6..1.8 × base text size
   chords: boolean;
 }
+// 2026-11-22 (Mira): bigger text by default for the musicians' TV (Jack) — was 5.2 / 3 (about +25%).
+// The − / + buttons still scale this (prefs.size).
+const STAGE_TEXT_BASE = 6.5;
+const STAGE_NEXT_BASE = 3.75;
+
 const DEFAULT_PREFS: StagePrefs = { transpose: 0, size: 1, chords: true };
 
 export function loadStagePrefs(): StagePrefs {
@@ -254,7 +259,7 @@ export const StageView: React.FC<{
         </div>
 
         {/* current slide */}
-        <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-[2cqmin]" style={{ fontSize: `${5.2 * prefs.size}cqmin` }}>
+        <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-[2cqmin]" style={{ fontSize: `${STAGE_TEXT_BASE * prefs.size}cqmin` }}>
           {!state ? (
             <p className="text-center text-[0.5em] text-zinc-500">Naghihintay sa WorshipTech-Pro… Buksan ang Simulator sa kabilang window.</p>
           ) : !live ? (
@@ -280,7 +285,7 @@ export const StageView: React.FC<{
         </div>
 
         {/* next slide */}
-        <div className="border-t border-zinc-800 pt-[1.2cqmin]" style={{ fontSize: `${3 * prefs.size}cqmin` }}>
+        <div className="border-t border-zinc-800 pt-[1.2cqmin]" style={{ fontSize: `${STAGE_NEXT_BASE * prefs.size}cqmin` }}>
           <span className="font-mono text-[0.8em] font-semibold text-sky-400">NEXT</span>
           {live && next ? (
             <ChordSheet text={next.text} chords={next.chords} transpose={prefs.transpose} songKey={state!.songKey} showChords={prefs.chords} className="text-yellow-200" />

@@ -48,7 +48,7 @@ const RL = {
   HEARTBEAT_MS: 15000,
 };
 
-const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "stage-msg", "add-song", "remove", "move", "bible-lookup", "add-verses", "set-bg"] as const;
+const ALLOWED_CMDS = ["next", "prev", "golive", "black", "clear", "logo", "live", "select", "alert", "stage-msg", "add-song", "remove", "move", "bible-lookup", "add-verses", "set-bg", "open-output"] as const;
 type RemoteCmd =
   | { type: "next" | "prev" | "golive" | "black" | "clear" | "logo" }
   | { type: "live" | "select"; itemId: string; slide: number }
@@ -59,7 +59,8 @@ type RemoteCmd =
   | { type: "move"; itemId: string; dir: "up" | "down" }
   | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
   | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean }
-  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null };
+  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null }
+  | { type: "open-output"; kind: "main" | "stage" };
 
 /** 2026-11-17: background ids — built-in "bg-…" or a Media upload "img-…" / "vid-…" (same rule as SONG_BG_ID_RE in the app). */
 const BG_ID_RE = /^(bg|img|vid)-[\w-]{1,70}$/;
@@ -154,6 +155,11 @@ function cleanCmd(raw: unknown): RemoteCmd | null {
     if (c.scope === "all") return { type, scope: "all", bgId };
     if (c.scope !== "item" || typeof c.itemId !== "string" || !ID_RE.test(c.itemId)) return null;
     return { type, scope: "item", itemId: c.itemId, bgId };
+  }
+  // 2026-11-22 (Mira): open the projector / Stage window ON THE LAPTOP from the phone
+  if (type === "open-output") {
+    if (c.kind !== "main" && c.kind !== "stage") return null;
+    return { type, kind: c.kind };
   }
   return { type } as RemoteCmd;
 }

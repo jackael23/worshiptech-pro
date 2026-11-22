@@ -21,7 +21,9 @@ export type RemoteCmd =
   | { type: "bible-lookup"; reqId: string; bibleId: string; ref?: string; book?: number; chapter?: number }
   | { type: "add-verses"; bibleId: string; book: number; chapter: number; verses: number[]; live: boolean }
   // 2026-11-17 (Jarvis): lyrics background of one schedule item or of the whole schedule (bgId null = remove)
-  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null };
+  | { type: "set-bg"; scope: "item" | "all"; itemId?: string; bgId: string | null }
+  // 2026-11-22 (Mira): open the projector / Stage window on the laptop (not on the phone)
+  | { type: "open-output"; kind: "main" | "stage" };
 
 /** 2026-11-17: one background the phone can pick — built-in ("bg-…", drawn from `css`) or a Media upload (tiny `thumb`). */
 export interface RemoteBackground {

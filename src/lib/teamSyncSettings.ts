@@ -12,6 +12,8 @@ export interface TeamSyncSettings {
   enabled: boolean;
   teamId: string;
   teamName: string;
+  /** 2026-11-22 (Mira): true = the user turned sync off by hand, so a Google login no longer turns it on by itself. */
+  autoOff?: boolean;
 }
 
 const SETTINGS_KEY = "wtp-team-sync-v1";
@@ -25,7 +27,7 @@ function read(): TeamSyncSettings {
   try {
     const o = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || "null") as Partial<TeamSyncSettings> | null;
     if (!o || typeof o.teamId !== "string" || !TEAM_ID_RE.test(o.teamId)) return OFF;
-    return { enabled: o.enabled === true, teamId: o.teamId, teamName: typeof o.teamName === "string" ? o.teamName.slice(0, 60) : "" };
+    return { enabled: o.enabled === true, teamId: o.teamId, teamName: typeof o.teamName === "string" ? o.teamName.slice(0, 60) : "", autoOff: o.autoOff === true };
   } catch {
     return OFF;
   }

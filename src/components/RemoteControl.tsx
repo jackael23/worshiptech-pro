@@ -302,6 +302,12 @@ export const RemoteControl: React.FC = () => {
             setSheet(null);
             setScreen(k);
           }}
+          laptopOn={!disabled}
+          onOpenOnLaptop={(k) => {
+            setSheet(null);
+            cmd({ type: "open-output", kind: k });
+            setToast(k === "main" ? "Binubuksan sa laptop: Projector" : "Binubuksan sa laptop: Stage monitor");
+          }}
           onBackground={() => setSheet("bg")}
           onDisconnect={() => {
             setSheet(null);
@@ -1166,9 +1172,31 @@ const leaveFullscreen = () => {
   if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
 };
 
-const MenuSheet: React.FC<{ onClose: () => void; onScreen: (k: ScreenKind) => void; onBackground: () => void; onDisconnect: () => void }> = ({ onClose, onScreen, onBackground, onDisconnect }) => (
+const MenuSheet: React.FC<{
+  onClose: () => void;
+  onScreen: (k: ScreenKind) => void;
+  laptopOn: boolean;
+  onOpenOnLaptop: (k: ScreenKind) => void;
+  onBackground: () => void;
+  onDisconnect: () => void;
+}> = ({ onClose, onScreen, laptopOn, onOpenOnLaptop, onBackground, onDisconnect }) => (
   <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={onClose} role="dialog" aria-modal="true" aria-label="Menu" data-testid="remote-menu-sheet">
     <div className="space-y-4 rounded-t-2xl border-t border-line bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4" onClick={(e) => e.stopPropagation()}>
+      {/* 2026-11-22 (Mira): open the windows on the LAPTOP's projector / musicians' TV (Jack) */}
+      <div>
+        <div className="eyebrow mb-1.5">Buksan sa laptop</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onOpenOnLaptop("main")} disabled={!laptopOn} className="btn btn-primary h-14 rounded-xl text-sm" data-testid="remote-open-main">
+            <MonitorUp className="h-4 w-4" />
+            Projector
+          </button>
+          <button onClick={() => onOpenOnLaptop("stage")} disabled={!laptopOn} className="btn btn-primary h-14 rounded-xl text-sm" data-testid="remote-open-stage">
+            <Music2 className="h-4 w-4" />
+            Stage monitor
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-fg-subtle">Bubukas sa projector at TV ng musicians na nakakabit sa laptop. Kung hindi bumukas: sa laptop, payagan ang pop-ups para sa site na ito.</p>
+      </div>
       <div>
         <div className="eyebrow mb-1.5">Gawing screen ang device na ito</div>
         <div className="grid grid-cols-2 gap-2">

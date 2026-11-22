@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({ version, setVersion, language, s
   const [showAccount, setShowAccount] = useState(START.openAccount);
   const auth = useAuth();
   useEffect(() => onOpenAccount(() => setShowAccount(true)), []);
-  const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-login o gumawa ng account";
+  const accountTitle = auth.status === "user" ? `Account: ${auth.name} · ${PLAN_LABEL[planFromRoles(auth.roles)]}` : "Account: mag-sign in gamit ang Google";
   return (
     // 2026-11-15 (Sanctuary mockup): desktop app bar sits on the canvas (no bar color), controls are grouped boxes
     <header className="relative z-50 shrink-0 border-b border-line bg-surface lg:border-transparent lg:bg-transparent">

@@ -19,10 +19,9 @@
  * PouchDB change feed (checkpoint `seq`), so nothing depends on Firestore's own offline cache.
  */
 import { useSyncExternalStore } from "react";
-import type { FirebaseApp } from "firebase/app";
-import type { Auth, User } from "firebase/auth";
-import type { Firestore, QuerySnapshot, Unsubscribe } from "firebase/firestore";
-import { firebaseConfig, isFirebaseConfigured } from "./firebaseConfig";
+import type { User } from "firebase/auth";
+import type { QuerySnapshot, Unsubscribe } from "firebase/firestore";
+import { describeAuthError, googleSignIn, googleSignOut, isFirebaseAvailable, isFirebaseLoaded, loadFirebase, onFirebaseUser } from "./firebase";
 import { getLocalDb, removeDoc, upsertDoc } from "./couchSync";
 import { StoredSong, sanitizeSong } from "./mySongsStore";
 import { loadCheckpoint, loadTeamSettings, saveCheckpoint, saveTeamSettings, TEAM_ID_RE } from "./teamSyncSettings";
@@ -44,18 +43,9 @@ import {
   toRemoteData,
 } from "./teamSyncCore";
 
-// Dev / test only: `VITE_FIREBASE_EMULATOR=1 npm run dev` talks to the local Firebase Emulator
-// (auth :9099, firestore :8080) instead of the real project.
-// (Written exactly as `import.meta.env.VITE_…` so Vite replaces it at build time and the emulator code drops out of the real build.)
-declare global {
-  interface ImportMeta {
-    readonly env: Record<string, string | undefined>;
-  }
-}
-const EMULATOR = import.meta.env.VITE_FIREBASE_EMULATOR === "1";
-const config = EMULATOR ? { apiKey: "demo-key", authDomain: "localhost", projectId: "demo-wtp", appId: "demo-app" } : firebaseConfig;
-
-export const isTeamSyncAvailable = (): boolean => EMULATOR || isFirebaseConfigured();
+// 2026-11-21 (Mira): Firebase loading, the emulator switch and the Google popup moved to
+// lib/firebase.ts — shared with the Account login, so one Google login serves both.
+export const isTeamSyncAvailable = (): boolean => isFirebaseAvailable();
 
 // ---------------------------------------------------------------- status (what the panel shows)
 
@@ -92,37 +82,6 @@ export const useTeamStatus = (): TeamStatus => useSyncExternalStore(subscribeTea
 
 // ---------------------------------------------------------------- Firebase (loaded on demand)
 
-interface Fb {
-  app: FirebaseApp;
-  auth: Auth;
-  db: Firestore;
-  authMod: typeof import("firebase/auth");
-  fs: typeof import("firebase/firestore");
-}
-
-let fbPromise: Promise<Fb> | null = null;
-function loadFirebase(): Promise<Fb> {
-  fbPromise ??= (async () => {
-    const [appMod, authMod, fs] = await Promise.all([import("firebase/app"), import("firebase/auth"), import("firebase/firestore")]);
-    const app = appMod.initializeApp(config);
-    const auth = authMod.getAuth(app);
-    const db = fs.getFirestore(app);
-    if (EMULATOR) {
-      authMod.connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-      fs.connectFirestoreEmulator(db, "127.0.0.1", 8080);
-      // Emulator only (this branch is removed from the real build): log in as a made-up Google
-      // account without the popup, for automated tests.
-      (window as unknown as Record<string, unknown>).__wtpTeamTestLogin = (email: string) =>
-        authMod.signInWithCredential(auth, authMod.GoogleAuthProvider.credential(JSON.stringify({ sub: `uid-${email}`, email, email_verified: true })));
-    }
-    return { app, auth, db, authMod, fs };
-  })();
-  fbPromise.catch(() => {
-    fbPromise = null; // e.g. offline on the very first use: the next click tries again
-  });
-  return fbPromise;
-}
-
 let user: User | null = null;
 let authReady: Promise<void> | null = null;
 
@@ -132,7 +91,9 @@ function ensureAuth(): Promise<void> {
     const { auth, authMod } = await loadFirebase();
     await new Promise<void>((resolve) => {
       let first = true;
-      authMod.onAuthStateChanged(auth, (u) => {
+      // 2026-11-22 (Mira): onIdTokenChanged (not onAuthStateChanged) so a login whose email gets
+      // verified later (email + password) is heard too: reloadFirebaseUser() refreshes the token.
+      authMod.onIdTokenChanged(auth, (u) => {
         const email = u && u.emailVerified ? cleanEmail(u.email) : null;
         user = email ? u : null;
         if (!user) {
@@ -165,10 +126,8 @@ const describeError = (e: unknown): string => {
   if (code === "permission-denied") return "Walang access. Kasali ka pa ba sa team? Itanong sa may-ari ng team.";
   if (code === "unavailable" || code === "auth/network-request-failed") return "Walang internet. Susubok ulit.";
   if (code === "resource-exhausted") return "Naabot ang libreng quota ng Firebase ngayong araw. Susubok ulit mamaya.";
-  if (code === "auth/popup-blocked") return "Na-block ng browser ang login window. Payagan ang popup at subukan ulit.";
-  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return "Isinara ang login window.";
-  if (code === "auth/internal-error") return "Hindi mabuksan ang Google login. Tingnan ang internet, o kung may extension na nagba-block nito.";
-  if (code === "auth/unauthorized-domain") return "Hindi pa pinapayagan ang address na ito sa Firebase (Authentication → Settings → Authorized domains).";
+  const authMsg = describeAuthError(code);
+  if (authMsg) return authMsg;
   return code ? `Error: ${code}` : "May error. Subukan ulit.";
 };
 
@@ -178,7 +137,7 @@ const describeError = (e: unknown): string => {
 export async function openTeamSync(): Promise<void> {
   if (!isTeamSyncAvailable()) return;
   try {
-    if (!fbPromise && status.state === "off") setStatus({ state: "loading" });
+    if (!isFirebaseLoaded() && status.state === "off") setStatus({ state: "loading" });
     await ensureAuth();
     if (status.state === "loading") setStatus({ state: "off" });
     if (user) await refreshTeams();
@@ -189,11 +148,8 @@ export async function openTeamSync(): Promise<void> {
 
 export async function loginGoogle(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { auth, authMod } = await loadFirebase();
     await ensureAuth();
-    const provider = new authMod.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    await authMod.signInWithPopup(auth, provider);
+    await googleSignIn();
     if (!user) return { ok: false, error: "Hindi verified ang email ng account na ito." };
     return { ok: true }; // teams + (if it was on) the sync follow from the login itself, see ensureAuth
   } catch (e) {
@@ -204,12 +160,7 @@ export async function loginGoogle(): Promise<{ ok: boolean; error?: string }> {
 /** Logs out of Google. Songs stay in this browser; Team sync stays "on" and waits for the next login. */
 export async function logoutGoogle(): Promise<void> {
   stopBridge();
-  try {
-    const { auth, authMod } = await loadFirebase();
-    await authMod.signOut(auth);
-  } catch {
-    /* ignore */
-  }
+  await googleSignOut();
 }
 
 /** Reads the teams this account is a member of (one small query). */
@@ -276,15 +227,59 @@ export async function enableTeamSync(team: TeamInfo): Promise<void> {
 export function disableTeamSync(): void {
   stopBridge();
   const s = loadTeamSettings();
-  saveTeamSettings({ ...s, enabled: false });
+  saveTeamSettings({ ...s, enabled: false, autoOff: true }); // 2026-11-22: stays off until turned on by hand
   setStatus({ state: "off", team: null, pending: 0, message: undefined });
 }
 
 /** Starts sync on app load when it was left on (called by the Songs tab; runs once). */
 let autoStart: Promise<void> | null = null;
 export function autoStartTeamSync(): Promise<void> {
-  autoStart ??= loadTeamSettings().enabled && isTeamSyncAvailable() ? startTeamSync() : Promise.resolve();
+  if (!autoStart) {
+    autoStart = loadTeamSettings().enabled && isTeamSyncAvailable() ? startTeamSync() : Promise.resolve();
+    // 2026-11-22 (Mira): any Google login (Account window or this panel) turns on personal sync by
+    // itself. onFirebaseUser does not load Firebase; it only hears logins once something loads it.
+    if (isTeamSyncAvailable()) onFirebaseUser((u) => {
+      if (u) void autoPersonalSync();
+    });
+  }
   return autoStart;
+}
+
+// ---------------------------------------------------------------- personal sync (2026-11-22, Mira)
+// Jack: songs must sync with NO team and NO plan. A "team" is only the box in Firestore that says
+// where the songs live and who may read them, so every Google account gets its own box (a team of
+// one, id = uid, which firestore.rules already allow) and sync turns on by itself after login.
+// Adding members to it later turns it into a shared team. Turning sync off by hand (autoOff) stops this.
+
+const personalTeamName = (u: User): string =>
+  cleanTeamName(u.displayName) || cleanTeamName((u.email || "").split("@")[0]) || "Mga kanta ko";
+
+let autoBusy = false;
+async function autoPersonalSync(): Promise<void> {
+  const s = loadTeamSettings();
+  if (s.enabled || s.autoOff || autoBusy || !isTeamSyncAvailable()) return;
+  autoBusy = true;
+  try {
+    await ensureAuth();
+    if (!user) return; // not verified, or logged out meanwhile
+    const uid = user.uid;
+    let mine = (await refreshTeams()).find((t) => t.id === uid) ?? null;
+    if (!mine) {
+      const r = await createTeam(personalTeamName(user));
+      if (!r.ok) {
+        setStatus({ state: "error", message: r.error });
+        return;
+      }
+      mine = status.teams.find((t) => t.id === uid) ?? null;
+    }
+    const now = loadTeamSettings();
+    if (!mine || now.enabled || now.autoOff) return; // turned on / off by hand meanwhile
+    await enableTeamSync(mine);
+  } catch (e) {
+    setStatus({ state: "error", message: describeError(e) });
+  } finally {
+    autoBusy = false;
+  }
 }
 
 async function startTeamSync(): Promise<void> {

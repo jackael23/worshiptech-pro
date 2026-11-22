@@ -27,7 +27,17 @@ export interface BillingStatus {
   newlyPaid?: number;
 }
 
-const NONE: BillingInfo = { enabled: false, plans: [] };
+// 2026-11-21 (Mira): no app server (Firebase Hosting) → no /api/billing. Show the same prices
+// as billingServer.ts anyway, as "coming soon", so churches still see the plans. Keep in step
+// with the prices at the top of billingServer.ts. Pro stays "coming" here: its cloud sync needs
+// the CouchDB server.
+const NONE: BillingInfo = {
+  enabled: false,
+  plans: [
+    { id: "basic", name: "Basic", monthly: 299, yearly: 2990, available: true },
+    { id: "pro", name: "Pro", monthly: 699, yearly: 6990, available: false },
+  ],
+};
 
 let info: Promise<BillingInfo> | null = null;
 export function getBillingInfo(): Promise<BillingInfo> {

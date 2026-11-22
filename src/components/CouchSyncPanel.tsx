@@ -28,6 +28,12 @@ import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { DEFAULT_COUCH } from "../lib/couchSync";
 import { useTeamSettings } from "../lib/teamSyncSettings";
 
+// 2026-11-21 (Mira): the account is now a Google login (Firebase), but Pro cloud sync still needs
+// the hosted CouchDB server and its own login cookie (cloudServer.ts), which do not exist yet.
+// Until then the section only says "coming soon". Set to true once the hosted server is up AND
+// cloud sync is wired to the Google account.
+const CLOUD_SYNC_READY = false;
+
 const STATE_LABEL: Record<SyncStatus["state"], string> = {
   off: "CouchDB: off",
   connecting: "CouchDB: kumokonekta…",
@@ -221,6 +227,10 @@ export const CouchSyncPanel: React.FC = () => {
                   I-off
                 </button>
               </div>
+            ) : !CLOUD_SYNC_READY ? (
+              <p className="text-fg-subtle" data-testid="cloud-soon">
+                Malapit na ang cloud sync. Para sa mga kanta, gamitin muna ang Team sync (libre, sa Songs tab).
+              </p>
             ) : account.status !== "user" ? (
               <>
                 <p className="text-fg-subtle">Iisang library sa lahat ng computer ng simbahan, at backup sa cloud.</p>

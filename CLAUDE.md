@@ -72,6 +72,67 @@ Keep this file up to date as work progresses (see "Progress log" at the bottom).
 
 ## Auth and subscriptions
 
+**2026-11-21 (Mira) — the account is now a Google login (Firebase), Phase 1.** Reason: the app runs on
+Firebase Hosting (static, no Express), so the CouchDB account (`/api/auth`) could never work there.
+- `src/lib/firebase.ts` — the ONE Firebase app (lazy SDK), shared by Account and Team sync: one
+  Google login for both (logout in either logs out of both). Emulator switch moved here.
+- `src/lib/auth.ts` — `useAuth()` keeps its shape (+ `uid`, `expiresAt`). Plan = Firestore
+  `accounts/{uid}` `{ plan: "basic" | "pro", expiresAt?: timestamp }` → `planFromAccountDoc` →
+  `rolesOfPlan` (entitlements.ts), so every `hasFeature(planFromRoles(...))` gate is unchanged.
+  3-day grace after `expiresAt`. Offline copy: localStorage `wtp-auth-v2` (14 days) +
+  `wtp-auth-signed-in`. The Firebase SDK is not loaded on first paint unless someone signed in here.
+- `firestore.rules` — `accounts/{uid}`: owner can read, NOBODY writes from the app. Jack sets plans
+  by hand in the Firebase Console (doc id = the "Account ID" shown in the Account window).
+- `AccountModal.tsx` — one "Mag-sign in gamit ang Google" button (Firebase preloaded when the window
+  opens, so the popup is not blocked); shows Account ID with copy button and the end date.
+- `billing.ts` — with no `/api/billing`, shows the price list as "coming" (Basic available, Pro coming).
+  `PlanSection.tsx` tells churches to pay by GCash + send the Account ID; `UPGRADE_CONTACT` (empty) is
+  for Jack's contact line.
+- `CouchSyncPanel.tsx` — `CLOUD_SYNC_READY = false`: Pro cloud sync shows "malapit na" (it still needs
+  the hosted CouchDB + its cookie). "Sariling CouchDB (advanced)" unchanged.
+- The CouchDB account code (authServer.ts, billingServer.ts, cloudServer.ts, couch helpers in auth.ts)
+  is KEPT for a future VPS; nothing calls the CouchDB account login from the UI any more.
+- Next (Phase 2, needs Jack's go — Blaze plan = cost): PayMongo checkout + webhook on Cloud
+  Functions writing `accounts/{uid}` with the Admin SDK; then Pro cloud sync on Firebase.
+
+**2026-11-22 (Mira) — Admin window (Jack only).** Account window → "Admin: mga plan" (shown only for
+`ADMIN_UIDS` in `src/lib/admin.ts`). Lists every account (profiles + accounts), search, set plan
+Free / Basic / Pro and end date (+1 month / +1 year from the current end if still running, none, or a date),
+or open an account by its Account ID. `src/components/AdminModal.tsx`.
+- The real lock is firestore.rules `isAdmin()` (same uid list — change BOTH together): admin reads all
+  `profiles` + `accounts` and writes `accounts` (only `plan` in free/basic/pro + optional timestamp
+  `expiresAt`). Nobody else can read others' data or write any plan.
+- `profiles/{uid}` = { email, name, lastSeen } written by each user about themself after login
+  (`saveProfile`, called from auth.ts `applyUser`, once a day per browser). Accounts that logged in before
+  2026-11-22 appear only after their next login; until then use "Account ID".
+- Jack's own account: `accounts/FW7iJWYqcjNIpTgFu84BQ0EaUUu1` = Pro, no end date (set 2026-11-22).
+- Rules need ~1 minute after publishing before they apply everywhere (first test got permission-denied).
+
+**2026-11-22 (Mira) — email + password login too** (Jack: not only Gmail). Email/Password provider
+enabled in the Firebase Console (Authentication → Sign-in method). Google stays the first button.
+- `firebase.ts`: `emailSignUp` (sends the verification email), `emailSignIn`, `sendPasswordReset`,
+  `resendVerification`, `reloadFirebaseUser` (reload + fresh token, then tells every `onFirebaseUser`
+  listener), `MIN_PASSWORD` = 8, Tagalog messages for the email/password error codes.
+- `auth.ts`: `AuthState.verified`; `signUpEmail` / `loginEmail` / `resetPassword` / `resendVerifyEmail` /
+  `checkVerified`. `refreshAuth` re-checks an unverified user (so coming back to the tab after clicking
+  the link is enough). `saveProfile` only for a verified email (nobody can put someone else's email in
+  the admin list).
+- Same Firebase uid + `accounts/{uid}` plan as Google. Firestore `signedIn()` already requires
+  `email_verified`, so team / personal sync waits until the email is confirmed; teamSync.ts now listens
+  with `onIdTokenChanged` so it hears the verification without a reload. TeamSyncPanel says "I-verify muna".
+- `AccountModal.tsx`: form under the Google button — Mag-login / Gumawa ng account / Nakalimutan ang
+  password; unverified banner with "Na-verify ko na" + "Ipadala ulit". Reset never says whether the email
+  has an account (Firebase email-enumeration protection).
+- **Testing switch (2026-11-22, Jack: "testing lang muna"):** `REQUIRE_EMAIL_VERIFICATION = false` in
+  firebase.ts → no verification email, no banner, every account goes to the admin list. Password accounts do
+  NOT sync meanwhile (rules need email_verified; panel says "Google account lang"). Set it to `true` before
+  real churches use the app.
+- Same email in both: Firebase's default "one account per email". Password account first, then Google with
+  the same Gmail → Firebase links it to the same uid (Google is trusted for Gmail). Google first, then sign-up
+  with that email → "May account na…" message (use Google, or "Nakalimutan ang password" to add a password).
+
+Below: the original CouchDB design (2026-11-16), still in the code but not used by the UI.
+
 Done (2026-11-16): login, phone remote + Lineups locked to Basic / Pro, PayMongo prepaid billing,
 cloud sync for Pro. Nothing is deployed yet: no hosted server exists, PayMongo is untested live.
 
@@ -174,6 +235,15 @@ Done (2026-11-17), code only: NOT yet run against a real Firebase project (Jack 
   (auth :9099, firestore :8080; needs Java). `window.__wtpTeamTestLogin(email)` exists only then.
 - Still open: test on the real project (Google popup, rules, quota); a Help article; member
   self-leave; team rename / delete (today: Firebase Console).
+- **Personal sync (2026-11-22, Mira — Jack: songs must sync with no team and no plan).** After ANY
+  Google login (Account window or the panel), `autoPersonalSync()` in teamSync.ts creates the account's
+  own team (id = uid, name = Google display name; the existing rules already allow it) if it has none,
+  and turns sync on by itself — no confirm (it is the user's own box). Started from
+  `autoStartTeamSync()` via `onFirebaseUser` (does not load Firebase). Turning sync off by hand sets
+  `autoOff` in `wtp-team-sync-v1`, so it stays off until turned on again. Panel wording: "Sync: …"
+  chip, "Sync ng kanta"; "Team:" shows only once there are other members. Members stay optional.
+  Joining SOMEONE ELSE's team is still by hand (panel → I-on). Quota note: every signed-in church
+  shares the one free Spark quota of the project.
 
 ## Phone remote additions (2026-11-17)
 
@@ -217,5 +287,33 @@ Done (2026-11-17), code only: NOT yet run against a real Firebase project (Jack 
   tablets / phones. Tested with a real local server + CouchDB-compatible login, two remotes.
 - 2026-11-17: Team sync built (Firebase Auth + Firestore, songs only; CouchDB sync skips songs while
   it is on). Tested with a stand-in Firestore + the real Auth emulator; not yet on a real project.
+- 2026-11-21 (Mira): Google sign-in became the account login (Phase 1, see "Auth and subscriptions").
+  Tested: tsc, build, Auth emulator + Playwright (login, Account ID, offline plan, reload, logout,
+  Team sync shares the login), vitest with mocked Firebase for the plan rules (8 tests, not committed).
+  NOT tested: the real Google popup (sandbox blocks apis.google.com) and firestore.rules (Firestore
+  emulator download blocked).
 - 2026-11-19: Landing page at `/welcome` (`welcome.html`, plain HTML/CSS + `src/welcome.ts` for the bundled
   fonts; second Vite input; Firebase rewrite + prod Express route). App stays at `/`. index.html meta no longer says "AI".
+- 2026-11-22 (Mira): Firestore rules re-published from firestore.rules (adds accounts/{uid}). Personal sync
+  (see "Team sync"). Tested on Jack's localhost:3000 with the real project: tsc + vite build ok; after
+  reload the chip showed "Sync: synced", team doc created, 2 of 2 active songs in Firestore (a song deleted
+  before the first sync is correctly not sent). The very first reload right after the files were written
+  still showed "Sync: off" (probably the dev server picking up the new files; not reproduced).
+  NOT tested: second device, edit after sync, fresh Google login, turning off/on. The live site
+  (web.app) is an old build (2026-10-28); test on localhost only.
+- 2026-11-22 (Mira): Admin window built (see "Auth and subscriptions"); rules published 00:36. Tested on
+  localhost: tsc + build ok; Admin button shows for Jack; list shows his profile + Pro; save Pro / no end
+  date accepted; +1 month preview right; anonymous REST read of accounts + profiles and a plan write all 403.
+  NOT tested: a second signed-in non-admin account (should be refused by the same rule), the Petsa field.
+- 2026-11-22 (Mira): email + password login (see "Auth and subscriptions"). Email/Password provider turned on
+  in the Firebase Console. Tested: tsc ok; Auth emulator + Playwright 21/21 (input checks, sign-up, verification
+  email + resend, unverified banner, verify → banner gone, logout, wrong password, email in use, reset email,
+  login, reload). NOT tested: real project emails (inbox / Spam), sync starting after verification on the real
+  Firestore (needs Firestore), Google + password on the same Gmail.
+- 2026-11-22 (Mira): Stage screen text bigger by default (lyrics 5.2 → 6.5 cqmin, NEXT 3 → 3.75; − / + still
+  scale it; StageScreen.tsx STAGE_TEXT_BASE / STAGE_NEXT_BASE). Phone remote Menu → "Buksan sa laptop":
+  Projector / Stage monitor opens the window ON THE LAPTOP (saved screen) via new command `open-output`
+  { kind: "main" | "stage" } (remoteServer.ts cleanCmd, remoteLink.ts, Simulator handleRemoteScheduleCmd →
+  handleOpenOutput(true, kind)). No laptop click, so Chrome needs Pop-ups: Allow for the site; fullscreen still
+  needs a click/Enter unless AutomaticFullscreenAllowedForUrls policy. Tested: tsc + vite build + server bundle ok;
+  cleanCmd unit check (main/stage ok, bad kind refused). NOT tested: real phone → laptop → projector/TV.

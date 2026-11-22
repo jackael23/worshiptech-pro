@@ -4,6 +4,9 @@ rules_version = '2';
 // teams/{teamId}        = { name, ownerUid, ownerEmail, memberEmails[], createdAt }  (teamId = owner's uid)
 // teams/{teamId}/songs/ = one doc per song; a deleted song stays as an empty doc with deleted: true
 // Only people whose Google email is in memberEmails can read or write a team's songs.
+// 2026-11-21: accounts/{uid} = the plan of a Google account (read by its owner only).
+// 2026-11-22: admin (Jack, isAdmin) reads every profile + plan and writes plans (src/lib/admin.ts);
+//             profiles/{uid} = { email, name, lastSeen } written by each user about themself.
 // Everything else in the database is closed.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -12,6 +15,25 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email_verified == true;
+    }
+
+    // 2026-11-22 (Mira): the admin's Firebase uid. Keep in sync with ADMIN_UIDS in src/lib/admin.ts.
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in ['FW7iJWYqcjNIpTgFu84BQ0EaUUu1'];
+    }
+
+    function validAccount(d) {
+      return d.keys().hasOnly(['plan', 'expiresAt'])
+        && d.plan in ['free', 'basic', 'pro']
+        && (!('expiresAt' in d) || d.expiresAt is timestamp);
+    }
+
+    function validProfile(d) {
+      return d.keys().hasOnly(['email', 'name', 'lastSeen'])
+        && d.keys().hasAll(['email', 'name', 'lastSeen'])
+        && d.email is string && d.email == request.auth.token.email.lower()
+        && d.name is string && d.name.size() <= 100
+        && d.lastSeen == request.time;
     }
 
     function email() {
@@ -51,6 +73,26 @@ service cloud.firestore {
         && d.deleted is bool
         && d.by == email()
         && d.serverAt == request.time;
+    }
+
+    // 2026-11-21 (Mira): account plan for the Google login (src/lib/auth.ts).
+    // accounts/{uid} = { plan: "basic" | "pro", expiresAt?: timestamp }. The owner can only READ it;
+    // nobody can write it from the app. Jack sets it in the Firebase Console (later: the payment
+    // server, which uses the Admin SDK and is not bound by these rules).
+    // 2026-11-22: + the admin may read every plan and set it (only these fields).
+    match /accounts/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin() && validAccount(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 2026-11-22 (Mira): who has an account, for the admin list. Each user writes only their own.
+    match /profiles/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.email != null
+        && validProfile(request.resource.data);
+      allow delete: if false;
     }
 
     match /teams/{teamId} {

@@ -1,0 +1,33 @@
+Windows Registry Editor Version 5.00
+
+; WorshipTech-Pro church laptop setup (2026-11-22, Mira)
+; Lets the app at localhost:3000 open the Projector / Stage windows from the phone remote,
+; put them on the right screen, and go fullscreen by itself - no click on the laptop needed.
+; Double-click this file (admin), then close ALL Chrome / Edge windows and open again.
+; Only affects localhost:3000 (this app). To undo, delete these keys in regedit.
+
+; ---- Google Chrome ----
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\PopupsAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\WindowManagementAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\AutomaticFullscreenAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"
+
+; ---- Microsoft Edge ----
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\PopupsAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\WindowManagementAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\AutomaticFullscreenAllowedForUrls]
+"1"="http://localhost:3000"
+"2"="http://127.0.0.1:3000"

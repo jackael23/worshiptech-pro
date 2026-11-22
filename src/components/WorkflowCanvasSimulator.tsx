@@ -895,6 +895,11 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
         else resolveSongBackground(cmd.bgId).then((r) => r.css && apply(r.css, r.mediaId));
         return true;
       }
+      // 2026-11-22 (Mira): phone opens the projector / Stage window here, on the saved screen.
+      // No click on the laptop, so Chrome needs "Pop-ups: Allow" for this site (else the notice says "blocked").
+      case "open-output":
+        void handleOpenOutput(true, cmd.kind);
+        return true;
       default:
         return false;
     }

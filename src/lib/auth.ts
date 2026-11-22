@@ -1,27 +1,44 @@
 /**
- * 2026-11-16: account login with CouchDB's built-in authentication (_users + /_session cookie).
+ * 2026-11-16: account login, first with CouchDB's built-in authentication.
+ * 2026-11-21 (Mira): the ACCOUNT is now a Google login (Firebase Auth) and the plan is read from
+ *   Firestore accounts/{uid} — see "account state" below. The CouchDB session helpers stay here
+ *   because the "Sariling CouchDB (advanced)" sync panel and couchSync.ts still use them.
  *  - Login is OPTIONAL: songs, Bible and projection work with no account and no internet.
  *    An account only unlocks paid features (see lib/entitlements.ts).
- *  - One account = one church. The login name is the email used at sign-up.
- *  - The browser talks to CouchDB directly for login / logout / "who am I" (session cookie,
- *    HttpOnly). The password is only sent, never saved.
- *  - Sign-up goes through the app's server (POST /api/auth/signup, authServer.ts): CouchDB 3
- *    does not let visitors write to _users.
- *  - The last known name + roles are kept in this browser, so a church that paid is not locked
+ *  - One account = one church = one Google account.
+ *  - The last known name + plan are kept in this browser, so a church that paid is not locked
  *    out when the internet drops (OFFLINE_GRACE_MS). This is a convenience, not security:
  *    features that run on the laptop can only be soft-locked.
- *  - CouchDB's session lasts 10 minutes by default; while logged in the app checks the session
- *    every few minutes, which also renews the cookie.
+ * 2026-11-22 (Mira): + email + password login (signUpEmail / loginEmail / resetPassword). Same
+ *   Firebase user and plan doc; `verified` says whether the email was confirmed (sync needs it).
  * No PouchDB in here, so the app bar can use it without loading the Simulator's chunk.
  */
 import { useSyncExternalStore } from "react";
+import type { User } from "firebase/auth";
+import { Plan, planFromAccountDoc, rolesOfPlan } from "./entitlements";
+import {
+  MIN_PASSWORD,
+  REQUIRE_EMAIL_VERIFICATION,
+  describeAuthError,
+  emailSignIn,
+  emailSignUp,
+  googleSignIn,
+  googleSignOut,
+  isFirebaseAvailable,
+  isFirebaseLoaded,
+  loadFirebase,
+  onFirebaseUser,
+  reloadFirebaseUser,
+  resendVerification,
+  sendPasswordReset,
+} from "./firebase";
+import { saveProfile } from "./admin";
 
 export const DEFAULT_ACCOUNT_URL = "http://localhost:5984";
-const CACHE_KEY = "wtp-auth-v1";
+// 2026-11-21: v2 = Google account (uid + plan); the old CouchDB copy (v1) is simply not read.
+const CACHE_KEY = "wtp-auth-v2";
 const OFFLINE_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
-const KEEPALIVE_MS = 4 * 60 * 1000;
 const SESSION_TIMEOUT_MS = 8000;
-export const PASSWORD_MIN = 8;
 
 export const trimUrl = (url: string) => url.replace(/\/+$/, "");
 
@@ -98,27 +115,44 @@ export function getAuthConfig(): Promise<AuthConfig> {
   return config;
 }
 
-// ---------------------------------------------------------------- account state
+// ---------------------------------------------------------------- account state (Google / Firebase)
+// 2026-11-21 (Mira): the account is now a Google login (Firebase Auth), so it works on the
+// static Firebase Hosting site too — the old CouchDB account needed the app's own server
+// (/api/auth), which Firebase Hosting does not have. The plan comes from Firestore
+// accounts/{uid} (see planFromAccountDoc in entitlements.ts). The shape of AuthState did not
+// change, so every hasFeature(planFromRoles(auth.roles), …) check works as before.
 
 export interface AuthState {
   status: "loading" | "anon" | "user";
+  /** Email of the account (lower-case): Google, or email + password. */
   name: string | null;
+  /** 2026-11-22: false = email + password account whose email is not confirmed yet (sync waits). */
+  verified: boolean;
+  /** Firebase uid: the id Jack uses in accounts/{uid} to set the plan. */
+  uid: string | null;
   roles: string[];
-  /** true = the account server did not answer; name / roles are the last ones this browser saw. */
+  /** End of the paid period (ISO), null = none / set by hand without an end. */
+  expiresAt: string | null;
+  /** true = the plan could not be read just now; name / roles are the last ones this browser saw. */
   offline: boolean;
 }
 
 interface Cached {
   name: string;
-  roles: string[];
+  uid: string;
+  plan: Plan;
+  expiresAt: string | null;
   checkedAt: number;
+  /** 2026-11-22; missing in older copies = verified (they were all Google). */
+  verified?: boolean;
 }
 
 function loadCache(): Cached | null {
   try {
     const o = JSON.parse(window.localStorage.getItem(CACHE_KEY) || "null") as Partial<Cached> | null;
-    if (!o || typeof o.name !== "string" || !o.name || typeof o.checkedAt !== "number" || !Array.isArray(o.roles)) return null;
-    return { name: o.name, roles: o.roles.filter((r): r is string => typeof r === "string"), checkedAt: o.checkedAt };
+    if (!o || typeof o.name !== "string" || !o.name || typeof o.uid !== "string" || !o.uid || typeof o.checkedAt !== "number") return null;
+    const plan: Plan = o.plan === "basic" || o.plan === "pro" ? o.plan : "free";
+    return { name: o.name, uid: o.uid, plan, expiresAt: typeof o.expiresAt === "string" ? o.expiresAt : null, checkedAt: o.checkedAt, verified: o.verified !== false };
   } catch {
     return null;
   }
@@ -133,13 +167,41 @@ function saveCache(c: Cached | null): void {
   }
 }
 
-let state: AuthState = { status: "loading", name: null, roles: [], offline: false };
+/**
+ * "Someone is signed in to Google on this browser" — kept apart from the plan copy, so a login
+ * whose plan could not be read (offline) is still picked up after a reload.
+ */
+const SIGNED_IN_KEY = "wtp-auth-signed-in";
+function setSignedIn(on: boolean): void {
+  try {
+    if (on) window.localStorage.setItem(SIGNED_IN_KEY, "1");
+    else window.localStorage.removeItem(SIGNED_IN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+function wasSignedIn(): boolean {
+  try {
+    return window.localStorage.getItem(SIGNED_IN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const isFresh = (c: Cached) => Date.now() - c.checkedAt < OFFLINE_GRACE_MS && Date.now() >= c.checkedAt;
+/** A cached plan whose end date (plus grace) has passed counts as Free, also offline. */
+const cachedPlan = (c: Cached): Plan => planFromAccountDoc({ plan: c.plan, expiresAt: c.expiresAt ?? undefined }).plan;
+const ANON: AuthState = { status: "anon", name: null, uid: null, verified: false, roles: [], expiresAt: null, offline: false };
+
+let state: AuthState = { ...ANON, status: "loading" };
 const listeners = new Set<() => void>();
 let started = false;
 let checkNo = 0;
 
 function setState(next: AuthState): void {
-  const same = next.status === state.status && next.name === state.name && next.offline === state.offline && next.roles.join("\n") === state.roles.join("\n");
+  const same =
+    next.status === state.status && next.name === state.name && next.uid === state.uid && next.offline === state.offline && next.verified === state.verified &&
+    next.expiresAt === state.expiresAt && next.roles.join("\n") === state.roles.join("\n");
   if (same) return;
   state = next;
   listeners.forEach((fn) => fn());
@@ -147,34 +209,92 @@ function setState(next: AuthState): void {
 
 export const getAuth = (): AuthState => state;
 
-/** Asks the account server who is logged in and updates the state (and the offline copy). */
-export async function refreshAuth(): Promise<AuthState> {
+/** Reads the plan of this Google user from Firestore and updates the state (and the offline copy). */
+async function applyUser(u: User | null): Promise<AuthState> {
   const mine = ++checkNo;
-  const { couchUrl } = await getAuthConfig();
-  const s = await couchSession(couchUrl);
-  if (mine !== checkNo) return state; // a newer check (e.g. right after login) wins
-  if (s.reachable) {
-    saveCache(s.name ? { name: s.name, roles: s.roles, checkedAt: Date.now() } : null);
-    setState(s.name ? { status: "user", name: s.name, roles: s.roles, offline: false } : { status: "anon", name: null, roles: [], offline: false });
-  } else {
+  if (!u) {
+    saveCache(null);
+    setSignedIn(false);
+    setState(ANON);
+    return state;
+  }
+  setSignedIn(true);
+  const name = (u.email || u.uid).trim().toLowerCase();
+  const verified = u.emailVerified;
+  try {
+    const { db, fs } = await loadFirebase();
+    const snap = await fs.getDoc(fs.doc(db, "accounts", u.uid));
+    if (mine !== checkNo) return state; // a newer check (e.g. right after login) wins
+    const { plan, expiresAt } = planFromAccountDoc(snap.exists() ? snap.data() : null);
+    saveCache({ name, uid: u.uid, plan, expiresAt, checkedAt: Date.now(), verified });
+    setState({ status: "user", name, uid: u.uid, verified, roles: rolesOfPlan(plan), expiresAt, offline: false });
+    // 2026-11-22 (Mira): email + name for the admin's account list (once a day; a failure changes nothing here).
+    // Only a confirmed email, so nobody can put someone else's address in Jack's list.
+    // (While REQUIRE_EMAIL_VERIFICATION is off — testing — every account is listed.)
+    if (verified || !REQUIRE_EMAIL_VERIFICATION) void saveProfile(u).catch(() => undefined);
+  } catch {
+    // Offline (or Firestore not reachable): Google still knows who this is; the plan is the last one seen.
+    if (mine !== checkNo) return state;
     const c = loadCache();
-    const fresh = c && Date.now() - c.checkedAt < OFFLINE_GRACE_MS && Date.now() >= c.checkedAt;
-    setState(fresh ? { status: "user", name: c.name, roles: c.roles, offline: true } : { status: "anon", name: null, roles: [], offline: true });
+    const same = c && c.uid === u.uid && isFresh(c);
+    setState({ status: "user", name, uid: u.uid, verified, roles: same ? rolesOfPlan(cachedPlan(c)) : [], expiresAt: same ? c.expiresAt : null, offline: true });
   }
   return state;
+}
+
+/** Asks again who is logged in and what plan they have (e.g. after Jack changed the plan). */
+export async function refreshAuth(): Promise<AuthState> {
+  if (!isFirebaseAvailable()) {
+    setState(ANON);
+    return state;
+  }
+  try {
+    const { auth } = await loadFirebase();
+    await auth.authStateReady();
+    // 2026-11-22: not verified yet → ask Firebase again (the link may have been clicked in another tab).
+    // reloadFirebaseUser tells every listener (this file included), so nothing more to do here.
+    if (REQUIRE_EMAIL_VERIFICATION && auth.currentUser && !auth.currentUser.emailVerified) {
+      try {
+        await reloadFirebaseUser();
+        return state;
+      } catch {
+        /* offline: fall through with what Firebase remembers */
+      }
+    }
+    return await applyUser(auth.currentUser);
+  } catch {
+    // Firebase itself could not load (offline on a browser that never loaded it): keep the offline copy.
+    const c = loadCache();
+    if (c && isFresh(c)) setState({ status: "user", name: c.name, uid: c.uid, verified: c.verified !== false, roles: rolesOfPlan(cachedPlan(c)), expiresAt: c.expiresAt, offline: true });
+    else setState({ ...ANON, offline: true });
+    return state;
+  }
 }
 
 function start(): void {
   if (started) return;
   started = true;
-  void refreshAuth();
-  // Only while logged in: keeps the 10-minute CouchDB session alive during a service,
-  // and people without CouchDB don't get a failed request every few minutes.
-  setInterval(() => state.status === "user" && void refreshAuth(), KEEPALIVE_MS);
-  document.addEventListener("visibilitychange", () => !document.hidden && state.status === "user" && void refreshAuth());
+  // Hear every login / logout, also the ones made from the Team sync panel (same Google login).
+  onFirebaseUser((u) => void applyUser(u));
+  const c = loadCache();
+  if (c && isFresh(c)) {
+    // Someone logged in on this browser before: show that at once, then confirm with Firebase.
+    setState({ status: "user", name: c.name, uid: c.uid, verified: c.verified !== false, roles: rolesOfPlan(cachedPlan(c)), expiresAt: c.expiresAt, offline: false });
+    void refreshAuth();
+  } else if (wasSignedIn() && isFirebaseAvailable()) {
+    // Signed in, but no recent plan copy (e.g. the plan could not be read last time): ask Firebase.
+    setState({ ...ANON, status: "loading" });
+    void refreshAuth();
+  } else {
+    // Nobody logged in here: do not load the Firebase SDK on first paint (free features need no account).
+    saveCache(null);
+    setState(ANON);
+  }
+  // Back to the app (e.g. after the plan was changed): read the plan again.
+  document.addEventListener("visibilitychange", () => !document.hidden && state.status === "user" && isFirebaseLoaded() && void refreshAuth());
 }
 
-/** Calls `fn` on every change. The first subscriber starts the session check. */
+/** Calls `fn` on every change. The first subscriber starts the check. */
 export function subscribeAuth(fn: () => void): () => void {
   listeners.add(fn);
   start();
@@ -193,47 +313,101 @@ export function onOpenAccount(fn: () => void): () => void {
   return () => window.removeEventListener(ACCOUNT_EVENT, fn);
 }
 
-/** Emails are stored in small letters at sign-up; other names (e.g. a CouchDB admin) stay as typed. */
-const cleanName = (name: string) => (name.includes("@") ? name.trim().toLowerCase() : name.trim());
-
-export async function login(name: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  const { couchUrl } = await getAuthConfig();
-  const r = await couchLogin(couchUrl, cleanName(name), password);
-  if (!r.ok) return r;
-  const after = await refreshAuth();
-  if (after.status !== "user") {
-    // CouchDB said yes but the next request had no cookie: the browser refused to keep it.
-    return { ok: false, error: "Tama ang password, pero hindi na-save ng browser ang session cookie. Dapat nasa parehong site ang app at ang CouchDB (o payagan ang cookies)." };
-  }
-  return { ok: true };
-}
-
-export async function logout(): Promise<void> {
-  const { couchUrl } = await getAuthConfig();
-  await couchLogout(couchUrl);
-  // Even when the server was not reachable: this browser forgets the account.
-  checkNo++;
-  saveCache(null);
-  setState({ status: "anon", name: null, roles: [], offline: false });
-}
-
-export interface SignupInput {
-  church: string;
-  email: string;
-  password: string;
-}
-
-/** Creates the account on the server, then logs in. */
-export async function signup(input: SignupInput): Promise<{ ok: boolean; error?: string }> {
-  let res: Response;
+/** Google sign-in (popup), then reads the plan. */
+export async function login(): Promise<{ ok: boolean; error?: string }> {
+  if (!isFirebaseAvailable()) return { ok: false, error: "Hindi pa naka-setup ang Google sign-in sa app na ito." };
   try {
-    res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
-  } catch {
-    return { ok: false, error: "Hindi maabot ang server ng app." };
+    const u = await googleSignIn();
+    await applyUser(u);
+    return { ok: true };
+  } catch (e) {
+    const code = (e as { code?: string })?.code || "";
+    return { ok: false, error: describeAuthError(code) ?? (code ? `Error: ${code}` : "Hindi naka-login. Subukan ulit.") };
   }
-  if (!res.ok) {
-    const j = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    return { ok: false, error: typeof j?.error === "string" ? j.error : `Hindi nagawa ang account (HTTP ${res.status}).` };
+}
+
+// ---------------------------------------------------------------- email + password (2026-11-22, Mira)
+
+type Result = { ok: boolean; error?: string };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const authFail = (e: unknown, fallback: string): Result => {
+  const code = (e as { code?: string })?.code || "";
+  return { ok: false, error: describeAuthError(code) ?? (code ? `Error: ${code}` : fallback) };
+};
+
+function checkInput(email: string, password?: string): string | null {
+  if (!isFirebaseAvailable()) return "Hindi pa naka-setup ang login sa app na ito.";
+  if (!EMAIL_RE.test(email.trim())) return "Mali ang email. Ilagay ang buong email address.";
+  if (password !== undefined && !password) return "Ilagay ang password.";
+  return null;
+}
+
+/** New email + password account; a verification email is sent. */
+export async function signUpEmail(email: string, password: string, confirm: string): Promise<Result> {
+  const bad = checkInput(email, password);
+  if (bad) return { ok: false, error: bad };
+  if (password.length < MIN_PASSWORD) return { ok: false, error: `Ang password ay dapat hindi bababa sa ${MIN_PASSWORD} character.` };
+  if (password !== confirm) return { ok: false, error: "Hindi magkapareho ang dalawang password." };
+  try {
+    await applyUser(await emailSignUp(email, password));
+    return { ok: true };
+  } catch (e) {
+    return authFail(e, "Hindi nagawa ang account. Subukan ulit.");
   }
-  return login(input.email, input.password);
+}
+
+/** Email + password login. */
+export async function loginEmail(email: string, password: string): Promise<Result> {
+  const bad = checkInput(email, password);
+  if (bad) return { ok: false, error: bad };
+  try {
+    await applyUser(await emailSignIn(email, password));
+    return { ok: true };
+  } catch (e) {
+    return authFail(e, "Hindi naka-login. Subukan ulit.");
+  }
+}
+
+/** "Nakalimutan ang password": sends the reset email. */
+export async function resetPassword(email: string): Promise<Result> {
+  const bad = checkInput(email);
+  if (bad) return { ok: false, error: bad };
+  try {
+    await sendPasswordReset(email);
+    return { ok: true };
+  } catch (e) {
+    return authFail(e, "Hindi naipadala. Subukan ulit.");
+  }
+}
+
+/** Sends the verification email again. */
+export async function resendVerifyEmail(): Promise<Result> {
+  try {
+    await resendVerification();
+    return { ok: true };
+  } catch (e) {
+    return authFail(e, "Hindi naipadala. Subukan ulit.");
+  }
+}
+
+/** "Na-verify ko na": asks Firebase again. ok = verified now. */
+export async function checkVerified(): Promise<Result> {
+  try {
+    const u = await reloadFirebaseUser();
+    if (u?.emailVerified) return { ok: true };
+    return { ok: false, error: "Hindi pa verified. Buksan ang link sa email (tingnan din ang Spam), saka pindutin ulit." };
+  } catch (e) {
+    return authFail(e, "Hindi ma-check ngayon. Subukan ulit.");
+  }
+}
+
+/** Logs out of Google (this also ends Team sync's login: it is the same one). */
+export async function logout(): Promise<void> {
+  checkNo++;
+  await googleSignOut();
+  // Even when Firebase was not reachable: this browser forgets the account.
+  saveCache(null);
+  setSignedIn(false);
+  setState(ANON);
 }

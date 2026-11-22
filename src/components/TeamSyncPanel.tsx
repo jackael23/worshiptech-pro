@@ -23,17 +23,20 @@ import {
   useTeamStatus,
 } from "../lib/teamSync";
 import { useTeamSettings } from "../lib/teamSyncSettings";
+import { openAccount, useAuth } from "../lib/auth";
+import { REQUIRE_EMAIL_VERIFICATION } from "../lib/firebase";
 import type { TeamInfo } from "../lib/teamSyncCore";
 
+// 2026-11-22 (Mira): "Sync" instead of "Team" — sync now turns on by itself after a Google login (personal sync).
 const STATE_LABEL: Record<TeamSyncState, string> = {
-  off: "Team: off",
-  loading: "Team: sandali…",
-  login: "Team: mag-login",
-  connecting: "Team: kumokonekta…",
-  syncing: "Team: nagsi-sync…",
-  synced: "Team: synced",
-  offline: "Team: offline",
-  error: "Team: error",
+  off: "Sync: off",
+  loading: "Sync: sandali…",
+  login: "Sync: mag-login",
+  connecting: "Sync: kumokonekta…",
+  syncing: "Sync: nagsi-sync…",
+  synced: "Sync: synced",
+  offline: "Sync: offline",
+  error: "Sync: error",
 };
 
 const STATE_DOT: Record<TeamSyncState, string> = {
@@ -49,6 +52,7 @@ const STATE_DOT: Record<TeamSyncState, string> = {
 
 export const TeamSyncPanel: React.FC = () => {
   const status = useTeamStatus();
+  const auth = useAuth(); // 2026-11-22: to explain a not-yet-verified email + password login
   const settings = useTeamSettings();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,7 +95,7 @@ export const TeamSyncPanel: React.FC = () => {
 
   const turnOff = () => {
     disableTeamSync();
-    setMsg("Naka-off ang Team sync. Naka-save pa rin ang mga kanta sa browser na ito at sa team.");
+    setMsg("Naka-off ang sync. Naka-save pa rin ang mga kanta sa browser na ito at sa cloud. Hindi na ito kusang mag-o-on hanggang i-on mo ulit.");
   };
 
   const addMember = () => {
@@ -122,7 +126,7 @@ export const TeamSyncPanel: React.FC = () => {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="tap-target inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-line bg-surface-2 hover:bg-surface-3 text-fg-muted"
-        title={status.message || (lastSync ? `Huling sync: ${lastSync}` : "Team sync: iisang song library para sa team")}
+        title={status.message || (lastSync ? `Huling sync: ${lastSync}` : "Sync ng kanta gamit ang Google account")}
         data-testid="team-status"
         aria-expanded={open}
       >
@@ -136,17 +140,31 @@ export const TeamSyncPanel: React.FC = () => {
       {open && (
         <div className="mt-1.5 p-2.5 rounded-lg border border-line bg-surface-2 space-y-2" data-testid="team-panel">
           <div className="flex items-center justify-between">
-            <strong className="text-fg">Team sync (kanta lang)</strong>
+            <strong className="text-fg">Sync ng kanta</strong>
             <button type="button" onClick={() => setOpen(false)} className="tap-target p-1 text-fg-subtle hover:text-fg" aria-label="Isara">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
           <p className="text-fg-subtle">
-            Iisang song library para sa buong team, gamit ang Google account. Laging naka-save muna sa browser na ito ang mga kanta, kaya gumagana kahit walang internet; sumasabay ito sa team kapag may
-            internet na.
+            Pagka-login sa Google, kusang nagsi-sync ang mga kanta mo, kaya pareho ang kanta sa lahat ng device mo. Laging naka-save muna sa browser na ito, kaya gumagana kahit walang internet;
+            sumasabay ito kapag may internet na. Puwede ka ring magdagdag ng kasama para iisa ang kanta ng buong team.
           </p>
 
-          {!status.email ? (
+          {!status.email && auth.status === "user" && !auth.verified ? (
+            // 2026-11-22 (Mira): email + password account not verified yet: Firestore refuses it, so say why.
+            <div className="space-y-1.5" data-testid="team-unverified">
+              {REQUIRE_EMAIL_VERIFICATION ? (
+                <>
+                  <p className="text-fg-muted">I-verify muna ang email mo (<strong className="text-fg break-all">{auth.name}</strong>) gamit ang link na ipinadala namin, saka magsi-sync ang mga kanta.</p>
+                  <button type="button" onClick={openAccount} className="btn btn-secondary btn-sm">
+                    Buksan ang Account
+                  </button>
+                </>
+              ) : (
+                <p className="text-fg-muted">Sa ngayon, Google account lang ang nakakapag-sync ng kanta. Naka-save pa rin ang mga kanta sa browser na ito.</p>
+              )}
+            </div>
+          ) : !status.email ? (
             <button type="button" onClick={() => void run(loginGoogle)} disabled={busy || status.state === "loading"} className="btn btn-primary btn-sm" data-testid="team-login">
               <LogIn className="w-3.5 h-3.5" /> {busy ? "Sandali…" : "Login gamit ang Google"}
             </button>
@@ -165,7 +183,17 @@ export const TeamSyncPanel: React.FC = () => {
                 <div className="space-y-1.5 rounded-md border border-line p-2" data-testid="team-on">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-fg-muted">
-                      Team: <strong className="text-fg">{team?.name || settings.teamName}</strong>
+                      {team && team.memberEmails.length > 1 ? (
+                        <>
+                          Team: <strong className="text-fg">{team.name}</strong>
+                        </>
+                      ) : team && owner ? (
+                        "Naka-sync sa Google account mo."
+                      ) : (
+                        <>
+                          Team: <strong className="text-fg">{team?.name || settings.teamName}</strong>
+                        </>
+                      )}
                     </span>
                     <button type="button" onClick={turnOff} className="btn btn-secondary btn-sm" data-testid="team-off">
                       I-off
@@ -179,7 +207,8 @@ export const TeamSyncPanel: React.FC = () => {
                   {team && team.memberEmails.length > 0 && (
                     <div className="space-y-1">
                       <div className="text-fg-muted">
-                        Members ({team.memberEmails.length}/{TEAM_LIMITS.MAX_MEMBERS})
+                        Kasama sa sync ({team.memberEmails.length}/{TEAM_LIMITS.MAX_MEMBERS})
+                        {owner && team.memberEmails.length === 1 ? " · opsyonal: idagdag ang Gmail ng kasama para iisa ang kanta ng team" : ""}
                       </div>
                       <ul className="space-y-0.5" data-testid="team-members">
                         {team.memberEmails.map((m) => (
@@ -232,7 +261,7 @@ export const TeamSyncPanel: React.FC = () => {
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-fg-subtle">Hindi ka pa kasali sa kahit anong team. Ibigay ang Gmail mo sa may-ari ng team para maidagdag ka, o gumawa ng sarili mong team.</p>
+                    <p className="text-fg-subtle">Wala pang sync. Gumawa sa ibaba, o ibigay ang Gmail mo sa may-ari ng isang team para maidagdag ka.</p>
                   )}
                   {!ownsATeam() && (
                     <div className="flex gap-1.5">
