@@ -70,7 +70,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { SongEditorModal } from "./SongEditorModal";
 import { loadSongsFromDb, reloadSongs, saveSongsDiff, watchSongs } from "../lib/songsDb";
 import type { StoredSong, SongDraft } from "../lib/mySongsStore";
-import { toSongItem, USER_SONG_BACKGROUND } from "../lib/mySongsStore";
+import { toSongItem, USER_SONG_BACKGROUND, slideSizeKey } from "../lib/mySongsStore";
 import { resolveSongBackground } from "../lib/songBackground";
 import { listBibles, getBible, watchBibles, type WtpBible, type BibleMeta } from "../lib/bibleStore";
 import { lookupVerses, passageFor } from "../lib/bibleLookup";
@@ -553,9 +553,30 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     setScheduleItems(items);
     refreshLiveStyle(globalStyle, items);
   };
-  /** 2026-11-25 (Jarvis): text size of ONE slide (× the item / global size); 1 = remove. On air right away. */
+  /**
+   * 2026-11-25 (Jarvis): text size of ONE slide (× the item / global size); 1 = remove. On air right away.
+   * A song item that follows its My Song saves the size ON THE SONG, so every copy (and the next time
+   * the song is added) gets it; other items (hymns, "para sa schedule na ito lang") keep it on the item.
+   */
   const handleSlideScale = (itemId: string, slideIdx: number, scale: number) => {
     const sizeScale = clampSlideScale(scale);
+    const target = scheduleItems.find((i) => i.id === itemId);
+    const slide = target?.slides[slideIdx];
+    const prevSongs = songsRef.current;
+    const song = target?.songId && prevSongs ? prevSongs.find((x) => x.id === target.songId) : undefined;
+    if (target && slide && song && prevSongs && scheduleLoaded.current) {
+      // first time: start from the sizes this item already has, so they aren't lost
+      const sizes: Record<string, number> = { ...(song.slideSizes ?? Object.fromEntries(target.slides.filter((x) => x.sizeScale).map((x) => [slideSizeKey(x.label, x.text), x.sizeScale!]))) };
+      const key = slideSizeKey(slide.label, slide.text);
+      if (sizeScale) sizes[key] = sizeScale;
+      else delete sizes[key];
+      const next = prevSongs.map((x) => (x.id === song.id ? { ...x, slideSizes: sizes } : x));
+      applySongs(next); // schedule copies + live follow right away
+      saveSongsDiff(prevSongs, next)
+        .then((ok) => !ok && setSongEditNotice("Nasa schedule na ang laki ng slide, pero hindi na-save sa My Songs. Subukan ulit."))
+        .catch(() => setSongEditNotice("Nasa schedule na ang laki ng slide, pero hindi na-save sa My Songs. Subukan ulit."));
+      return;
+    }
     const items = scheduleItems.map((i) => {
       if (i.id !== itemId || !i.slides[slideIdx]) return i;
       const slides = i.slides.map((sl, k) => {
@@ -1507,7 +1528,18 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               {/* 2026-11-25 (Jarvis): text size of the selected slide only (× the item / global size) */}
               {currentScheduleItem && previewHasText && (
                 <div className="ml-auto flex shrink-0 items-center gap-1" role="group" aria-label={`Laki ng text ng slide ${previewIdx + 1}`} data-testid="slide-size">
-                  <span className="text-xs text-fg-subtle" title="Laki ng text ng napiling slide lang">
+                  {/* 2026-11-25: badge sits LEFT of the buttons, so − / + don't move when it appears */}
+                  {previewFit?.overflow ? (
+                    <span className="badge badge-warn" title={fitNote?.text} data-testid="slide-fit">
+                      <AlertTriangle className="h-3 w-3" /> Hindi kasya
+                    </span>
+                  ) : previewFit && previewFit.ratio < 0.98 && styleFor(currentScheduleItem).scale * previewScale > 1 ? (
+                    // only when a bigger size was asked for and auto-fit holds it back (normal auto-fit = no badge)
+                    <span className="badge" title={fitNote?.text} data-testid="slide-fit">
+                      fit {Math.round(previewFit.ratio * 100)}%
+                    </span>
+                  ) : null}
+                  <span className="text-xs text-fg-subtle" title={currentScheduleItem.songId ? "Laki ng text ng slide na ito — naka-save sa kanta (My Songs)" : "Laki ng text ng slide na ito — para sa schedule item na ito"}>
                     Slide {previewIdx + 1}
                   </span>
                   <button
@@ -1536,16 +1568,6 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
-                  {previewFit?.overflow ? (
-                    <span className="badge badge-warn" title={fitNote?.text} data-testid="slide-fit">
-                      <AlertTriangle className="h-3 w-3" /> Hindi kasya
-                    </span>
-                  ) : previewFit && previewFit.ratio < 0.98 && styleFor(currentScheduleItem).scale * previewScale > 1 ? (
-                    // only when a bigger size was asked for and auto-fit holds it back (normal auto-fit = no badge)
-                    <span className="badge" title={fitNote?.text} data-testid="slide-fit">
-                      fit {Math.round(previewFit.ratio * 100)}%
-                    </span>
-                  ) : null}
                 </div>
               )}
               <span className="hidden items-center gap-1 text-xs text-fg-subtle 2xl:flex" title="Click = preview • Double-click = LIVE • ↑/↓ slides • Page Down = Go Live">

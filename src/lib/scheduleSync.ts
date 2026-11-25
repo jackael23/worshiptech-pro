@@ -14,7 +14,7 @@
  * Pure functions (no DOM / storage) so they can be tested on their own.
  */
 import type { ScheduleItem, SlideContent } from "../types";
-import type { StoredSong } from "./mySongsStore";
+import { applySongSizes, type StoredSong } from "./mySongsStore";
 import { asSectionLabel, parseLyrics } from "./lyricsParser";
 import { COMMENT_RE, hasChords, stripChords } from "./chords";
 import { keepSlideSizes } from "./textStyle";
@@ -83,17 +83,21 @@ export function syncScheduleWithSongs(
       changed = true;
       item = { ...item, songBg: sig };
     } else if (item.songBg !== sig) bgPending.push(item.id);
-    const slides = songSlides(song.lyrics);
+    // 2026-11-25: a song with slideSizes decides each slide's own size (− / + saved on the song);
+    // an older song without it leaves the item's own sizes as they are.
+    const managed = song.slideSizes !== undefined;
+    const slides = managed ? applySongSizes(songSlides(song.lyrics), song.slideSizes) : songSlides(song.lyrics);
     const title = retitle(item.title, song.title);
     const songKey = song.key || undefined; // 2026-11-08: Stage screen shows the key
-    if (slides.length === 0 || (title === item.title && songKey === item.songKey && sameSlides(item.slides, slides))) return item;
+    const sameSizes = !managed || (item.slides.length === slides.length && item.slides.every((s, i) => (s.sizeScale ?? 1) === (slides[i].sizeScale ?? 1)));
+    if (slides.length === 0 || (title === item.title && songKey === item.songKey && sameSlides(item.slides, slides) && sameSizes)) return item;
     changed = true;
     const { songKey: _oldKey, ...rest } = item;
     return {
       ...rest,
       title,
       // 2026-11-25: slides that didn't change keep their own text size
-      slides: keepSlideSizes(item.slides, slides),
+      slides: managed ? slides : keepSlideSizes(item.slides, slides),
       activeSlideIndex: Math.min(item.activeSlideIndex, slides.length - 1),
       ...(songKey ? { songKey } : {}),
     };

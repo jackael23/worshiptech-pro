@@ -29,6 +29,12 @@ export interface StoredSong {
   /** 2026-11-06: own background — id only ("bg-…" built-in, "img-…"/"vid-…" Media upload), never the file itself. */
   bgId?: string;
   bgSettings?: BackgroundSettings;
+  /**
+   * 2026-11-25 (Jarvis): text size of single slides (− / + in the Simulator), key = slideSizeKey(label, text)
+   * → 0.5–2. Present (even {}) = the song decides the slide sizes of every schedule copy (scheduleSync).
+   * A slide whose words change loses its size. Not sent to the Firestore team sync (its rules list the fields).
+   */
+  slideSizes?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,6 +53,37 @@ export function sanitizeBgSettings(v: unknown): BackgroundSettings | undefined {
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/** 2026-11-25: short key of one slide (label + words), for StoredSong.slideSizes. */
+export function slideSizeKey(label: string, text: string): string {
+  let h = 5381;
+  const s = `${label}\n${text}`;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `s${(h >>> 0).toString(36)}${s.length.toString(36)}`;
+}
+
+/** 2026-11-25: the song's slide sizes put on its slides (missing = 100%). */
+export function applySongSizes<T extends { label: string; text: string; sizeScale?: number }>(slides: T[], sizes: Record<string, number> | undefined): T[] {
+  return slides.map((sl) => {
+    const v = sizes?.[slideSizeKey(sl.label, sl.text)];
+    if (v) return { ...sl, sizeScale: v };
+    if (sl.sizeScale === undefined) return sl;
+    const { sizeScale: _drop, ...rest } = sl;
+    return rest as T;
+  });
+}
+
+/** Keeps only sizes of slides the lyrics still have (0.5–2, not 100%). */
+function sanitizeSlideSizes(v: unknown, lyrics: string): Record<string, number> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const keys = new Set(parseLyrics(lyrics).map((sl) => slideSizeKey(sl.label, sl.text)));
+  const out: Record<string, number> = {};
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+    const n = typeof raw === "number" && isFinite(raw) ? Math.round(Math.min(2, Math.max(0.5, raw)) * 100) / 100 : 1;
+    if (keys.has(k) && n !== 1) out[k] = n;
+  }
+  return out;
+}
 
 export function newSongId(): string {
   const rand =
@@ -74,6 +111,7 @@ export function sanitizeSong(input: unknown): StoredSong | null {
     copyright: str(o.copyright, 300) || undefined,
     lyrics,
     ...(typeof o.bgId === "string" && SONG_BG_ID_RE.test(o.bgId) ? { bgId: o.bgId, bgSettings: sanitizeBgSettings(o.bgSettings) } : {}),
+    ...(o.slideSizes !== undefined ? { slideSizes: sanitizeSlideSizes(o.slideSizes, lyrics) ?? {} } : {}),
     createdAt: str(o.createdAt, 40) || now,
     updatedAt: str(o.updatedAt, 40) || now,
   };
@@ -113,7 +151,7 @@ export function toSongItem(s: StoredSong): SongItem {
     author: s.author || undefined,
     key: s.key || undefined,
     ccli: s.ccli || undefined,
-    slides: parseLyrics(s.lyrics),
+    slides: applySongSizes(parseLyrics(s.lyrics), s.slideSizes), // 2026-11-25: + each slide's own size
     defaultBackground: USER_SONG_BACKGROUND,
     source: "user",
     bgId: s.bgId,
@@ -231,7 +269,9 @@ export function upsertSongs(current: StoredSong[], drafts: SongDraft[]): { songs
       const old = result[idx];
       // 2026-11-06: a re-import without a background keeps the song's background.
       const bg = clean.bgId ? {} : { bgId: old.bgId, bgSettings: old.bgSettings };
-      result[idx] = { ...clean, ...bg, id: old.id, createdAt: old.createdAt };
+      // 2026-11-25: … and its slide sizes (only slides with the same words keep theirs)
+      const sizes = old.slideSizes !== undefined ? { slideSizes: sanitizeSlideSizes(old.slideSizes, clean.lyrics) ?? {} } : {};
+      result[idx] = { ...clean, ...bg, ...sizes, id: old.id, createdAt: old.createdAt };
       updated++;
     } else if (result.length < MY_SONGS_LIMITS.MAX_SONGS) {
       result.push(clean);

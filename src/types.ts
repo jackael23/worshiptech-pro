@@ -27,6 +27,8 @@ export interface SongItem {
     text: string;
     /** 2026-11-08: lines with [chords] for the Stage screen (lib/chords.ts). */
     chords?: string;
+    /** 2026-11-25: this slide's own text size, saved on the My Song (StoredSong.slideSizes). */
+    sizeScale?: number;
   }[];
   defaultBackground?: string;
   /** 2026-10-20: sample = built-in PD hymn, user = My Songs (browser only), reference = title/author only, no lyrics. */

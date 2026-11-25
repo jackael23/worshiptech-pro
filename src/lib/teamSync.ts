@@ -497,7 +497,8 @@ async function startBridge(teamId: string, teamName: string): Promise<void> {
         own.delete(id);
         pending.delete(id);
         const { id: _id, ...rest } = remote.song;
-        const doc: Record<string, unknown> = { ...rest, _id, type: "song" };
+        // 2026-11-25: slide sizes aren't in the team copy (Firestore rules) — keep this laptop's
+        const doc: Record<string, unknown> = { ...rest, ...(mine?.slideSizes && !rest.slideSizes ? { slideSizes: mine.slideSizes } : {}), _id, type: "song" };
         Object.keys(doc).forEach((k) => doc[k] === undefined && delete doc[k]); // PouchDB rejects undefined in some adapters
         await upsertDoc("songs", doc as { _id: string });
       } else if (d === "remove") {
