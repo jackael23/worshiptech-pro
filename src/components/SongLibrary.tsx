@@ -486,7 +486,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ searchQuery, onAddToSc
               <div className="flex-1 min-w-0">
                 <div className={`text-sm font-semibold truncate flex items-center gap-1.5 text-fg`}>
                   <span className="truncate">{song.title}</span>
-                  {isUser && <span className="shrink-0 px-1.5 rounded bg-accent-soft text-accent-text border border-accent/30 text-xs font-medium">My Song</span>}
+                  {/* 2026-11-25 (Jarvis): "My Song" badge removed (Jack's request) */}
                   {isUser && song.bgId && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-accent-text" aria-label="May sariling background" />}
                 </div>
                 <div className="text-xs text-fg-subtle flex items-center gap-1 mt-0.5 min-w-0">

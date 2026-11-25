@@ -5,7 +5,8 @@
  */
 import React, { useEffect, useState } from "react";
 import type { SlideContent, ResolvedTextStyle, BackgroundSettings } from "../types";
-import { DEFAULT_TEXT_STYLE, fontStack, fontWidth } from "../lib/textStyle";
+import { DEFAULT_TEXT_STYLE, fontStack } from "../lib/textStyle";
+import { BASE_TEXT_SCALE, fitSlide, useFontsVersion } from "../lib/textFit";
 import { getVideoUrl, watchMedia } from "../lib/mediaStore";
 
 /**
@@ -54,28 +55,14 @@ export const BackgroundVideo: React.FC<{ id: string; bgSettings?: BackgroundSett
 
 const DEFAULT_BG = "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)";
 
-/**
- * Auto-fit like EasyWorship: shrink the font (in % of screen width) until the text fits the 16:9 screen.
- * 2026-10-29: `glyph` = average character width of the chosen font (em); bold/italic make it a bit wider.
- */
-function fitTextScale(text: string, max: number, glyph = 0.5): number {
-  const PAD = 6; // % of width on each side
-  const width = 100 - PAD * 2;
-  const height = 56.25 - PAD * 2; // 16:9
-  const lines = text.split("\n");
-  for (let fs = max; fs > 1.6; fs -= 0.2) {
-    const perLine = width / (fs * glyph);
-    const wrapped = lines.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0);
-    if (wrapped * fs * 1.3 <= height) return fs;
-  }
-  return 1.6;
-}
+// 2026-11-25 (Jarvis): auto-fit moved to lib/textFit.ts — measured with the real font + word wrap
+// (it used an average letter width), and it now also knows the slide's own size and "same size".
 
 interface SlideScreenProps {
-  slide?: Pick<SlideContent, "text" | "image" | "background" | "textColor"> | null;
+  slide?: (Pick<SlideContent, "text" | "image" | "background" | "textColor"> & { sizeScale?: number }) | null;
   /** Fallback background (schedule item background) when the slide has none. */
   background?: string;
-  /** Text size as % of screen width. */
+  /** Text size as % of screen width. 2026-11-25: every screen uses BASE_TEXT_SCALE (thumbnails were 6.2). */
   textScale?: number;
   className?: string;
   /** Hide the slide's text/picture (Ctrl+C "clear text"). */
@@ -100,16 +87,18 @@ const DEFAULT_RESOLVED: ResolvedTextStyle = { ...DEFAULT_TEXT_STYLE, forceColor:
 const JUSTIFY = { top: "flex-start", middle: "center", bottom: "flex-end" } as const;
 const ALIGN_ITEMS = { left: "flex-start", center: "center", right: "flex-end" } as const;
 
-export const SlideScreen: React.FC<SlideScreenProps> = ({ slide, background, textScale = 4.4, className = "", hideContent, children, ariaHidden, textStyle, bgSettings, bgVideoId, layer = "all" }) => {
+export const SlideScreen: React.FC<SlideScreenProps> = ({ slide, background, textScale = BASE_TEXT_SCALE, className = "", hideContent, children, ariaHidden, textStyle, bgSettings, bgVideoId, layer = "all" }) => {
   const showBg = layer !== "content";
   const showContent = layer !== "bg";
   const bg = slide?.background || background || DEFAULT_BG;
-  const st = textStyle || DEFAULT_RESOLVED;
+  const st0 = textStyle || DEFAULT_RESOLVED;
+  // 2026-11-25: the slide's own size — from the style (Live: filled in for the slide on air) or the slide itself (thumbnails)
+  const st = st0.slideScale === undefined && slide?.sizeScale ? { ...st0, slideScale: slide.sizeScale } : st0;
   // color: item's own color > PowerPoint slide color > global color > white
   const slideColor = st.forceColor ? undefined : slide?.textColor;
   const color = slideColor || st.color || "#ffffff";
-  const glyph = fontWidth(st.fontFamily) * (st.bold ? 1.04 : 1) * (st.italic ? 1.02 : 1);
-  const fs = slide?.text ? fitTextScale(slide.text, textScale * st.scale, glyph) : 0;
+  useFontsVersion(); // re-measure once a font has loaded
+  const fs = slide?.text ? fitSlide(slide.text, textScale, st).fs : 0;
   const shadows = [
     // no dark shadow on a PowerPoint slide's own (usually dark) text color — it smudges
     st.shadow && !slideColor ? "0 0.3cqw 0.8cqw rgb(0 0 0 / 0.85)" : "",

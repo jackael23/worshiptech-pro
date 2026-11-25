@@ -4,7 +4,7 @@
  * schedule item. The resolved style travels inside LiveState, so the projector window and
  * the phone remote show exactly the same.
  */
-import type { TextStyle, ResolvedTextStyle } from "../types";
+import type { TextStyle, ResolvedTextStyle, SlideContent } from "../types";
 
 export const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: "Inter",
@@ -89,6 +89,8 @@ export function sanitizeTextStyle(raw: unknown): TextStyle {
     valign: r.valign === "top" || r.valign === "bottom" || r.valign === "middle" ? r.valign : d.valign,
     outline: typeof r.outline === "boolean" ? r.outline : d.outline,
     shadow: typeof r.shadow === "boolean" ? r.shadow : d.shadow,
+    // 2026-11-25: "same size on every slide" (left out when off, so old saved styles stay equal)
+    ...(r.uniformSize === true ? { uniformSize: true } : {}),
   };
 }
 
@@ -120,3 +122,16 @@ export function resolveTextStyle(global: TextStyle, override?: TextStyle | null)
 }
 
 export const sameStyle = (a?: ResolvedTextStyle, b?: ResolvedTextStyle) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * 2026-11-25 (Jarvis): slides were rebuilt (song edited) → keep each slide's own text size
+ * (SlideContent.sizeScale) on the slides that are still the same (same label + text).
+ */
+export function keepSlideSizes(oldSlides: SlideContent[], newSlides: SlideContent[]): SlideContent[] {
+  if (!oldSlides.some((s) => s.sizeScale)) return newSlides;
+  return newSlides.map((n, i) => {
+    const same = (o?: SlideContent) => !!o && o.sizeScale && o.label === n.label && o.text === n.text;
+    const old = same(oldSlides[i]) ? oldSlides[i] : oldSlides.find(same);
+    return old?.sizeScale ? { ...n, sizeScale: old.sizeScale } : n;
+  });
+}

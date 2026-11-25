@@ -17,6 +17,7 @@ import type { ScheduleItem, SlideContent } from "../types";
 import type { StoredSong } from "./mySongsStore";
 import { asSectionLabel, parseLyrics } from "./lyricsParser";
 import { COMMENT_RE, hasChords, stripChords } from "./chords";
+import { keepSlideSizes } from "./textStyle";
 
 /** Same id rule as My Songs (sanitizeSong). */
 export const SONG_ID_RE = /^user-[\w-]{1,80}$/;
@@ -91,7 +92,8 @@ export function syncScheduleWithSongs(
     return {
       ...rest,
       title,
-      slides,
+      // 2026-11-25: slides that didn't change keep their own text size
+      slides: keepSlideSizes(item.slides, slides),
       activeSlideIndex: Math.min(item.activeSlideIndex, slides.length - 1),
       ...(songKey ? { songKey } : {}),
     };

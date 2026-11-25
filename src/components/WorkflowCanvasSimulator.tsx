@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   FileMusic,
   BookOpen,
@@ -30,6 +30,7 @@ import {
   Pencil,
   Megaphone,
   Bell,
+  Minus,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -54,7 +55,8 @@ import type { StoredPresentation } from "../lib/presentationStore";
 import { useRemoteHost, scheduleForRemote, tinyPicture, RemoteCmd, RemoteBackground } from "../lib/remoteLink";
 import { openAccount, useAuth } from "../lib/auth";
 import { hasFeature, planFromRoles } from "../lib/entitlements";
-import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle } from "../lib/textStyle";
+import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle, keepSlideSizes, SCALE_MIN, SCALE_MAX } from "../lib/textStyle";
+import { BASE_TEXT_SCALE, clampSlideScale, fitSlide, uniformRatio, useFontsVersion } from "../lib/textFit";
 import { TextStyleEditor } from "./TextStyleEditor";
 import { MediaLibrary, DEFAULT_BG_SETTINGS } from "./MediaLibrary";
 import { ThemePicker, ThemeScope } from "./ThemePicker";
@@ -308,7 +310,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       if (i.id !== item.id) return i;
       const { songId: _unlink, songBg: _bg, ...rest } = i;
       // 2026-11-14: songUnlinked = never linked back to the My Song automatically (scheduleSync)
-      return { ...rest, title: retitle(i.title, draft.title), slides, activeSlideIndex: Math.min(i.activeSlideIndex, slides.length - 1), songUnlinked: true } as ScheduleItem;
+      return { ...rest, title: retitle(i.title, draft.title), slides: keepSlideSizes(i.slides, slides), activeSlideIndex: Math.min(i.activeSlideIndex, slides.length - 1), songUnlinked: true } as ScheduleItem;
     });
     commitSchedule(items);
     setSongEditNotice(`Binago ang "${draft.title}" para sa schedule na ito lang.`);
@@ -443,15 +445,55 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   // 2026-10-29 (Jarvis): text style — global (saved in this browser) + optional per schedule item.
   const [globalStyle, setGlobalStyle] = useState<TextStyle>(loadTextStyle);
   const [styleTarget, setStyleTarget] = useState<"global" | "item">("global");
-  const styleFor = (item?: ScheduleItem) => resolveTextStyle(globalStyle, item?.textStyle);
+  /**
+   * 2026-11-25 (Jarvis): + "same size on every slide" (uniformRatio of the item) and, when a slide
+   * number is given, that slide's own size (slideScale) — so the Live / projector / phone get it.
+   */
+  const resolveFor = (global: TextStyle, item: ScheduleItem | undefined, slideIdx?: number, ratios?: Map<string, number>) => {
+    let st = resolveTextStyle(global, item?.textStyle);
+    if (st.uniformSize && item) st = { ...st, uniformRatio: ratios?.get(item.id) ?? uniformRatio(item.slides, st) };
+    const own = slideIdx !== undefined ? item?.slides[slideIdx]?.sizeScale : undefined;
+    if (own) st = { ...st, slideScale: own };
+    return st;
+  };
+  const fontsVersion = useFontsVersion();
+  const uniformRatios = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const item of scheduleItems) {
+      const st = resolveTextStyle(globalStyle, item.textStyle);
+      if (st.uniformSize) m.set(item.id, uniformRatio(item.slides, st));
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleItems, globalStyle, fontsVersion]);
+  const styleFor = (item?: ScheduleItem, slideIdx?: number) => resolveFor(globalStyle, item, slideIdx, uniformRatios);
+  // 2026-11-25: auto-fit status of the selected slide (Slides header + Text style panel)
+  const previewIdx = currentScheduleItem?.slides?.[selectedSlideIndex] ? selectedSlideIndex : 0;
+  const previewHasText = !!currentPreviewSlide?.text && !currentPreviewSlide?.image;
+  const previewFit = previewHasText ? fitSlide(currentPreviewSlide!.text, BASE_TEXT_SCALE, styleFor(currentScheduleItem, previewIdx)) : null;
+  const previewScale = currentPreviewSlide?.sizeScale ?? 1;
+  const fitNote = !previewFit
+    ? null
+    : previewFit.overflow
+      ? { text: `Slide ${previewIdx + 1}: hindi kasya kahit pinakamaliit na — may naputol na text. Hatiin ang slide o bawasan ang text.`, warn: true }
+      : previewFit.ratio < 0.98
+        ? { text: `Slide ${previewIdx + 1}: pinaliit ng auto-fit sa ${Math.round(previewFit.ratio * 100)}% — hindi na ito lalaki kahit dagdagan ang Size.` }
+        : null;
   /** Re-applies the style to the slide on air (only when it actually changes). */
-  const refreshLiveStyle = (global: TextStyle, items: ScheduleItem[]) => {
+  const refreshLiveStyle = (global: TextStyle, items: ScheduleItem[], onlyIfSet = false) => {
     setLiveState((prev) => {
+      // the untouched start-up state is never pushed over what a projector shows (App.tsx)
+      if (onlyIfSet && !prev.textStyle) return prev;
       const onAir = items.find((i) => i.id === prev.activeScheduleItemId);
-      const ts = resolveTextStyle(global, onAir?.textStyle);
+      const ts = resolveFor(global, onAir, onAir ? prev.activeSlideIndex : undefined);
       return sameStyle(prev.textStyle, ts) ? prev : { ...prev, textStyle: ts };
     });
   };
+  // 2026-11-25: whatever changed the slide on air (phone, song edit, ↑/↓, font loaded) — its own size follows
+  useEffect(() => {
+    refreshLiveStyle(globalStyle, scheduleItems, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleItems, globalStyle, liveState.activeScheduleItemId, liveState.activeSlideIndex, fontsVersion]);
   const handleGlobalStyle = (next: TextStyle) => {
     setGlobalStyle(next);
     saveTextStyle(next);
@@ -508,6 +550,21 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
   };
   const handleItemStyle = (itemId: string, next: TextStyle | null) => {
     const items = scheduleItems.map((i) => (i.id === itemId ? { ...i, textStyle: next } : i));
+    setScheduleItems(items);
+    refreshLiveStyle(globalStyle, items);
+  };
+  /** 2026-11-25 (Jarvis): text size of ONE slide (× the item / global size); 1 = remove. On air right away. */
+  const handleSlideScale = (itemId: string, slideIdx: number, scale: number) => {
+    const sizeScale = clampSlideScale(scale);
+    const items = scheduleItems.map((i) => {
+      if (i.id !== itemId || !i.slides[slideIdx]) return i;
+      const slides = i.slides.map((sl, k) => {
+        if (k !== slideIdx) return sl;
+        const { sizeScale: _old, ...rest } = sl;
+        return sizeScale ? { ...rest, sizeScale } : rest;
+      });
+      return { ...i, slides };
+    });
     setScheduleItems(items);
     refreshLiveStyle(globalStyle, items);
   };
@@ -654,7 +711,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       currentSlideImage: slide.image,
       currentSlideTextColor: slide.textColor,
       currentSlideNotes: slide.notes,
-      textStyle: styleFor(item),
+      textStyle: styleFor(item, slideIdx),
       backgroundSettings: item.bgSettings,
       backgroundVideoId: videoOf(item, slide),
     }));
@@ -999,7 +1056,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
             image: nextSlide.image,
             background: nextSlide.background || onAir?.background,
             textColor: nextSlide.textColor,
-            textStyle: styleFor(onAir),
+            textStyle: styleFor(onAir, liveState.activeSlideIndex + 1),
             bgSettings: onAir?.bgSettings,
           }
         : null,
@@ -1447,7 +1504,51 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               <span className="eyebrow truncate tracking-[0.14em]">
                 Slides <span className="ml-1 font-mono font-normal tracking-normal">{currentScheduleItem?.slides?.length || 0}</span>
               </span>
-              <span className="hidden items-center gap-1 text-xs text-fg-subtle sm:flex" title="Click = preview • Double-click = LIVE • ↑/↓ slides • Page Down = Go Live">
+              {/* 2026-11-25 (Jarvis): text size of the selected slide only (× the item / global size) */}
+              {currentScheduleItem && previewHasText && (
+                <div className="ml-auto flex shrink-0 items-center gap-1" role="group" aria-label={`Laki ng text ng slide ${previewIdx + 1}`} data-testid="slide-size">
+                  <span className="text-xs text-fg-subtle" title="Laki ng text ng napiling slide lang">
+                    Slide {previewIdx + 1}
+                  </span>
+                  <button
+                    onClick={() => handleSlideScale(currentScheduleItem.id, previewIdx, previewScale - 0.1)}
+                    disabled={previewScale <= SCALE_MIN}
+                    className="btn btn-secondary btn-icon h-7 w-7 touch-44 lg:min-h-0 lg:min-w-0"
+                    aria-label="Liitan ang text ng slide na ito"
+                    title="Liitan (slide na ito lang)"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleSlideScale(currentScheduleItem.id, previewIdx, 1)}
+                    className={`btn btn-sm h-7 min-w-14 px-1.5 font-mono tabular-nums ${previewScale !== 1 ? "bg-accent-soft text-accent-text ring-1 ring-accent/60" : "btn-ghost text-fg-muted"}`}
+                    title={previewScale !== 1 ? "I-click para ibalik sa 100%" : "Laki ng text ng slide na ito"}
+                    data-testid="slide-size-value"
+                  >
+                    {Math.round(previewScale * 100)}%
+                  </button>
+                  <button
+                    onClick={() => handleSlideScale(currentScheduleItem.id, previewIdx, previewScale + 0.1)}
+                    disabled={previewScale >= SCALE_MAX}
+                    className="btn btn-secondary btn-icon h-7 w-7 touch-44 lg:min-h-0 lg:min-w-0"
+                    aria-label="Lakihan ang text ng slide na ito"
+                    title="Lakihan (slide na ito lang)"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                  {previewFit?.overflow ? (
+                    <span className="badge badge-warn" title={fitNote?.text} data-testid="slide-fit">
+                      <AlertTriangle className="h-3 w-3" /> Hindi kasya
+                    </span>
+                  ) : previewFit && previewFit.ratio < 0.98 && styleFor(currentScheduleItem).scale * previewScale > 1 ? (
+                    // only when a bigger size was asked for and auto-fit holds it back (normal auto-fit = no badge)
+                    <span className="badge" title={fitNote?.text} data-testid="slide-fit">
+                      fit {Math.round(previewFit.ratio * 100)}%
+                    </span>
+                  ) : null}
+                </div>
+              )}
+              <span className="hidden items-center gap-1 text-xs text-fg-subtle 2xl:flex" title="Click = preview • Double-click = LIVE • ↑/↓ slides • Page Down = Go Live">
                 <span className="kbd">↑</span>
                 <span className="kbd">↓</span>
                 select
@@ -1459,6 +1560,8 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               {currentScheduleItem?.slides?.map((slide, sIdx) => {
                 const isSlideSelected = selectedSlideIndex === sIdx;
                 const isSlideLive = liveState.isLive && liveState.activeScheduleItemId === currentScheduleItem.id && liveState.activeSlideIndex === sIdx;
+                // 2026-11-25: flag slides whose text is cut off
+                const slideOverflow = !!slide.text && !slide.image && fitSlide(slide.text, BASE_TEXT_SCALE, styleFor(currentScheduleItem, sIdx)).overflow;
                 return (
                   <div
                     key={sIdx}
@@ -1475,11 +1578,21 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                         isSlideLive ? "ring-2 ring-live" : isSlideSelected ? "ring-2 ring-accent" : "ring-1 ring-line group-hover:ring-line-strong"
                       }`}
                     >
-                      <SlideScreen slide={slide} background={currentScheduleItem.background} textScale={6.2} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem.bgSettings} ariaHidden />
+                      <SlideScreen slide={slide} background={currentScheduleItem.background} textScale={BASE_TEXT_SCALE} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem.bgSettings} ariaHidden />
                     </div>
                     <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                       <span className="font-mono text-xs tabular-nums text-fg-subtle">{sIdx + 1}</span>
                       <span className={`min-w-0 flex-1 truncate text-xs ${isSlideSelected ? "font-medium text-fg" : "text-fg-muted"}`}>{cleanTitle(slide.label)}</span>
+                      {slideOverflow && (
+                        <span className="badge badge-warn px-1 py-0 leading-4" title="Hindi kasya — may naputol na text" data-testid="thumb-overflow">
+                          <AlertTriangle className="h-3 w-3" />
+                        </span>
+                      )}
+                      {!!slide.sizeScale && (
+                        <span className="badge px-1 py-0 font-mono leading-4" title="May sariling laki ng text ang slide na ito" data-testid="thumb-size">
+                          {Math.round(slide.sizeScale * 100)}%
+                        </span>
+                      )}
                       {isSlideLive && <span className="badge badge-live px-1 py-0 leading-4">LIVE</span>}
                     </div>
                   </div>
@@ -1541,7 +1654,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               {/* 2026-11-16 (Sanctuary): narrow column = small Preview thumbnail with "Next up" beside it (mockup) */}
               <div className="order-2 flex items-center gap-3.5 @[40rem]/out:order-1 @[40rem]/out:flex-col-reverse @[40rem]/out:items-stretch @[40rem]/out:gap-2">
                 <div className="w-[38%] max-w-48 shrink-0 overflow-hidden rounded-md ring-1 ring-accent/60 @[40rem]/out:w-auto @[40rem]/out:max-w-none" data-testid="preview-screen">
-                  <SlideScreen slide={currentPreviewSlide} background={currentScheduleItem?.background} textScale={6} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem?.bgSettings} bgVideoId={videoOf(currentScheduleItem, currentPreviewSlide)} ariaHidden />
+                  <SlideScreen slide={currentPreviewSlide} background={currentScheduleItem?.background} textScale={BASE_TEXT_SCALE} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem?.bgSettings} bgVideoId={videoOf(currentScheduleItem, currentPreviewSlide)} ariaHidden />
                 </div>
                 <div className="min-w-0 @[40rem]/out:flex @[40rem]/out:items-baseline @[40rem]/out:gap-2">
                   <div className="eyebrow tracking-[0.14em] text-accent-text">Preview · next up</div>
@@ -1871,7 +1984,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                       {styleTarget === "global" ? (
                         <>
                           <p className="text-xs text-fg-subtle">Para sa lahat ng slide, maliban sa item na may sariling style.</p>
-                          <TextStyleEditor value={globalStyle} onChange={handleGlobalStyle} />
+                          <TextStyleEditor value={globalStyle} onChange={handleGlobalStyle} fitNote={fitNote} />
                         </>
                       ) : !currentScheduleItem ? (
                         <p className="text-xs text-fg-subtle">Pumili muna ng item sa Schedule.</p>
@@ -1883,7 +1996,7 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                               Ibalik sa global
                             </button>
                           </div>
-                          <TextStyleEditor value={currentScheduleItem.textStyle} onChange={(next) => handleItemStyle(currentScheduleItem.id, next)} />
+                          <TextStyleEditor value={currentScheduleItem.textStyle} onChange={(next) => handleItemStyle(currentScheduleItem.id, next)} fitNote={fitNote} />
                         </>
                       ) : (
                         <div className="space-y-2">

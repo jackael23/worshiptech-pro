@@ -70,6 +70,11 @@ export interface SlideContent {
   notes?: string;
   /** 2026-11-08: lines with [chords] — Stage screen only, never the projector (lib/chords.ts). */
   chords?: string;
+  /**
+   * 2026-11-25 (Jarvis): text size of THIS slide only, × the item / global size (0.5–2; missing = 1).
+   * Auto-fit still keeps the text on the screen.
+   */
+  sizeScale?: number;
 }
 
 /** 2026-10-29 (Jarvis): how slide text looks on the screens (see lib/textStyle.ts). */
@@ -85,11 +90,20 @@ export interface TextStyle {
   valign: "top" | "middle" | "bottom";
   outline: boolean;
   shadow: boolean;
+  /**
+   * 2026-11-25 (Jarvis): same text size on every slide of the item (the size that fits the
+   * longest slide), like EasyWorship's "same size for all slides". Missing = off.
+   */
+  uniformSize?: boolean;
 }
 
 /** The style actually used: forceColor = the item's own color beats a PowerPoint slide's color. */
 export interface ResolvedTextStyle extends TextStyle {
   forceColor: boolean;
+  /** 2026-11-25: this slide's own size (SlideContent.sizeScale), filled in for the slide on screen. */
+  slideScale?: number;
+  /** 2026-11-25: uniformSize — 0–1 × the normal max size, the same for every slide of the item. */
+  uniformRatio?: number;
 }
 
 /** 2026-10-29 (Jarvis): how the background picture is shown (per schedule item). */

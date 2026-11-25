@@ -707,7 +707,7 @@ const SongsPart: React.FC<{ library: RemoteLibrary; cmd: (c: RemoteCmd) => void;
                 {s.title} {s.chords && <span className="text-amber-400" title="May chords">♪</span>}
               </div>
               <div className="truncate text-xs text-fg-subtle">
-                {[s.mine ? "My Song" : "Hymn", s.key ? `Key ${s.key}` : "", s.author || "", `${s.slides} slides`].filter(Boolean).join(" · ")}
+                {[s.mine ? "" : "Hymn", s.key ? `Key ${s.key}` : "", s.author || "", `${s.slides} slides`].filter(Boolean).join(" · ")}
               </div>
             </div>
             <button

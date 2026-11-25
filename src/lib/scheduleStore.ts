@@ -13,6 +13,7 @@ import PouchDB from "pouchdb-browser";
 import type { BackgroundSettings, ScheduleItem, SlideContent } from "../types";
 import { SONG_ID_RE } from "./scheduleSync";
 import { packAssets, assetAttachments, unpackAssets } from "./dataUrlAssets";
+import { clampSlideScale } from "./textFit";
 
 const DB_NAME = "wtp-schedule";
 const DOC_ID = "current";
@@ -42,6 +43,8 @@ function cleanSlide(raw: unknown): SlideContent | null {
     notes: str(o.notes, 20_000),
     // 2026-11-08: chords for the Stage screen (dropped here before, so they vanished after a reload)
     chords: str(o.chords, 20_000),
+    // 2026-11-25: this slide's own text size (0.5–2)
+    sizeScale: clampSlideScale(o.sizeScale),
   };
 }
 

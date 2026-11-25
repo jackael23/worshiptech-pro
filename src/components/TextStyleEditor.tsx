@@ -3,18 +3,23 @@
  * alignment, outline/shadow). Every change applies right away (Live, projector, phone).
  */
 import React, { useEffect, useState } from "react";
-import { AlignLeft, AlignCenter, AlignRight, Bold, Italic, Minus, Plus, RotateCcw, AlertTriangle } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, Bold, Italic, Minus, Plus, RotateCcw, AlertTriangle, Rows3 } from "lucide-react";
 import type { TextStyle } from "../types";
 import { DEFAULT_TEXT_STYLE, FONT_PRESETS, SCALE_MAX, SCALE_MIN, cleanFontName, isFontAvailable, sanitizeTextStyle } from "../lib/textStyle";
 
 interface Props {
   value: TextStyle;
   onChange: (next: TextStyle) => void;
+  /**
+   * 2026-11-25 (Jarvis): auto-fit status of the selected slide, e.g. "Pinaliit ng auto-fit sa 72%",
+   * so "+" not making the text bigger isn't a mystery. warn = part of the text doesn't fit.
+   */
+  fitNote?: { text: string; warn?: boolean } | null;
 }
 
 const CUSTOM = "__custom__";
 
-export const TextStyleEditor: React.FC<Props> = ({ value, onChange }) => {
+export const TextStyleEditor: React.FC<Props> = ({ value, onChange, fitNote }) => {
   const set = (patch: Partial<TextStyle>) => onChange(sanitizeTextStyle({ ...value, ...patch }));
   const isPreset = FONT_PRESETS.some((f) => f.name === value.fontFamily);
   const [customMode, setCustomMode] = useState(!isPreset);
@@ -116,6 +121,22 @@ export const TextStyleEditor: React.FC<Props> = ({ value, onChange }) => {
           </button>
         </div>
         <p className="mt-1 text-xs text-fg-subtle">Auto-fit pa rin: kusang lumiliit kapag hindi kasya sa screen.</p>
+        {fitNote && (
+          <p className={`mt-1 flex items-start gap-1.5 text-xs ${fitNote.warn ? "notice-warn" : "text-fg-muted"}`} role="status" data-testid="ts-fit-note">
+            {fitNote.warn && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+            {fitNote.text}
+          </p>
+        )}
+        {/* 2026-11-25: same size on every slide (the size that fits the longest slide) */}
+        <button
+          onClick={() => set({ uniformSize: !value.uniformSize })}
+          aria-pressed={!!value.uniformSize}
+          className={`${toggle(!!value.uniformSize)} mt-2 w-full justify-start`}
+          title="Iisang laki ng text sa lahat ng slide ng item (ang laking kasya sa pinakamahabang slide)"
+          data-testid="ts-uniform"
+        >
+          <Rows3 className="h-3.5 w-3.5" /> Pare-parehong laki sa lahat ng slide
+        </button>
       </div>
 
       {/* bold / italic / outline / shadow */}
