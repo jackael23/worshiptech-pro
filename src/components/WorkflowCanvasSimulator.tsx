@@ -31,6 +31,7 @@ import {
   Megaphone,
   Bell,
   Minus,
+  Scissors,
 } from "lucide-react";
 import {
   MediaTabType,
@@ -58,6 +59,8 @@ import { hasFeature, planFromRoles } from "../lib/entitlements";
 import { loadTextStyle, saveTextStyle, resolveTextStyle, sameStyle, keepSlideSizes, SCALE_MIN, SCALE_MAX } from "../lib/textStyle";
 import { BASE_TEXT_SCALE, clampSlideScale, fitSlide, uniformRatio, useFontsVersion } from "../lib/textFit";
 import { TextStyleEditor } from "./TextStyleEditor";
+import { SlideEditDialog } from "./SlideEditDialog";
+import { canSplit, countPieces, editedSlides, replaceSlideInLyrics, slideRawText, splitInHalf } from "../lib/slideEdit";
 import { MediaLibrary, DEFAULT_BG_SETTINGS } from "./MediaLibrary";
 import { ThemePicker, ThemeScope } from "./ThemePicker";
 import { ItemBg, PresentationTheme, ThemeStore, findTheme, loadThemeStore, resolveThemeBg, saveThemeStore, themeFromItem } from "../lib/presentationThemes";
@@ -590,6 +593,61 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
     refreshLiveStyle(globalStyle, items);
   };
 
+  // ---------- 2026-11-25 (Jarvis): edit ONE slide (✏️ / F2) and "Hatiin sa 2" (lib/slideEdit.ts) ----------
+  const [slideEdit, setSlideEdit] = useState<{ itemId: string; slideIdx: number; title: string; initial: string; savesTo: "song" | "item"; hasChords: boolean } | null>(null);
+  /** What the editor starts with: the song's own lines (linked My Song) or the item's slide text. */
+  const slideEditSource = (item: ScheduleItem | undefined, idx: number) => {
+    const slide = item?.slides[idx];
+    if (!item || !slide || slide.image || !slide.text) return null;
+    const song = item.songId ? songsRef.current?.find((x) => x.id === item.songId) : undefined;
+    const raw = song ? slideRawText(song.lyrics, idx, slide.text) : null;
+    return raw !== null && song
+      ? { song, initial: raw, savesTo: "song" as const, hasChords: !!slide.chords }
+      : { song: undefined, initial: slide.chords || slide.text, savesTo: "item" as const, hasChords: !!slide.chords };
+  };
+  const openSlideEdit = (item: ScheduleItem | undefined, idx: number) => {
+    const src = slideEditSource(item, idx);
+    if (!item || !src) return;
+    setSlideEdit({ itemId: item.id, slideIdx: idx, title: `Slide ${idx + 1} · ${cleanTitle(item.slides[idx].label)}`, initial: src.initial, savesTo: src.savesTo, hasChords: src.hasChords });
+  };
+  /** Saves the edited lines of slide `idx` (a blank line = more slides). */
+  const saveSlideEdit = (itemId: string, idx: number, block: string) => {
+    const item = scheduleRef.current.find((i) => i.id === itemId);
+    const src = slideEditSource(item, idx);
+    if (!item || !src || countPieces(block) === 0) return;
+    const extra = countPieces(block) - 1;
+    const prevSongs = songsRef.current;
+    const newLyrics = src.song ? replaceSlideInLyrics(src.song.lyrics, idx, block, item.slides[idx].text) : null;
+    // the items whose slides change (every copy of a linked song)
+    const touched = new Set(src.song && newLyrics !== null ? scheduleRef.current.filter((i) => i.songId === src.song!.id).map((i) => i.id) : [itemId]);
+    // a slide AFTER the edited one is on air: keep the same words on air when slides are added
+    if (extra) setLiveState((prev) => (prev.activeScheduleItemId && touched.has(prev.activeScheduleItemId) && prev.activeSlideIndex > idx ? { ...prev, activeSlideIndex: prev.activeSlideIndex + extra } : prev));
+    if (src.song && newLyrics !== null && prevSongs) {
+      if (newLyrics.length > 10000) return setSongEditNotice("Masyadong mahaba ang kanta (max 10,000 characters) — hindi na-save.");
+      const now = new Date().toISOString();
+      const next = prevSongs.map((x) => (x.id === src.song!.id ? { ...x, lyrics: newLyrics, updatedAt: now } : x));
+      applySongs(next); // all copies + the Live follow
+      saveSongsDiff(prevSongs, next)
+        .then((ok) => setSongEditNotice(ok ? `Na-save ang slide sa "${src.song!.title}" (My Songs).` : "Nasa schedule na ang pagbabago, pero hindi na-save sa My Songs. Subukan ulit."))
+        .catch(() => setSongEditNotice("Nasa schedule na ang pagbabago, pero hindi na-save sa My Songs. Subukan ulit."));
+      return;
+    }
+    const pieces = editedSlides(block, item.slides[idx]);
+    const items = scheduleRef.current.map((i) =>
+      i.id !== itemId
+        ? i
+        : { ...i, slides: [...i.slides.slice(0, idx), ...pieces, ...i.slides.slice(idx + 1)], activeSlideIndex: i.activeSlideIndex > idx ? i.activeSlideIndex + extra : i.activeSlideIndex },
+    );
+    commitSchedule(items);
+    if (extra) setSongEditNotice(`Hinati ang slide — ${pieces.length} slides na (para sa schedule na ito lang).`);
+  };
+  /** B: one click — split the slide in the middle. */
+  const quickSplit = (item: ScheduleItem | undefined, idx: number) => {
+    const src = slideEditSource(item, idx);
+    if (!item || !src || !canSplit(src.initial)) return;
+    saveSlideEdit(item.id, idx, splitInHalf(src.initial));
+  };
+
   // 2026-11-07 (Mira): Presentation themes — text style + background in one click (lib/presentationThemes.ts).
   const [themeStore, setThemeStore] = useState<ThemeStore>(loadThemeStore);
   const updateThemeStore = (next: ThemeStore) => {
@@ -1112,6 +1170,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
       } else if (e.ctrlKey && k === "l") {
         e.preventDefault();
         handleToggleLogo();
+      } else if (e.key === "F2") {
+        // 2026-11-25: edit the selected slide
+        e.preventDefault();
+        openSlideEdit(currentScheduleItem, currentScheduleItem?.slides[selectedSlideIndex] ? selectedSlideIndex : 0);
       } else if (e.key === "PageDown") {
         e.preventDefault();
         handleGoLive();
@@ -1389,6 +1451,19 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               onClose={() => setLineupsOpen(false)}
             />
           )}
+          {slideEdit && (
+            <SlideEditDialog
+              title={slideEdit.title}
+              initial={slideEdit.initial}
+              savesTo={slideEdit.savesTo}
+              hasChords={slideEdit.hasChords}
+              onClose={() => setSlideEdit(null)}
+              onSave={(block) => {
+                saveSlideEdit(slideEdit.itemId, slideEdit.slideIdx, block);
+                setSlideEdit(null);
+              }}
+            />
+          )}
           {songEditNotice && (
             <p role="status" className="shrink-0 border-b border-line bg-ok-soft px-3 py-1.5 text-xs text-fg" data-testid="schedule-notice">
               {songEditNotice}
@@ -1528,7 +1603,12 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
               {/* 2026-11-25 (Jarvis): text size of the selected slide only (× the item / global size) */}
               {currentScheduleItem && previewHasText && (
                 <div className="ml-auto flex shrink-0 items-center gap-1" role="group" aria-label={`Laki ng text ng slide ${previewIdx + 1}`} data-testid="slide-size">
-                  {/* 2026-11-25: badge sits LEFT of the buttons, so − / + don't move when it appears */}
+                  {/* 2026-11-25: badge + "Hatiin" sit LEFT of the buttons, so − / + don't move when they appear */}
+                  {previewFit && (previewFit.overflow || previewFit.ratio < 0.9) && canSplit(currentPreviewSlide!.chords || currentPreviewSlide!.text) && (
+                    <button onClick={() => quickSplit(currentScheduleItem, previewIdx)} className="btn btn-secondary btn-sm h-7 px-2" title="Hatiin sa 2 slide para lumaki ang text" data-testid="slide-quick-split">
+                      <Scissors className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Hatiin</span>
+                    </button>
+                  )}
                   {previewFit?.overflow ? (
                     <span className="badge badge-warn" title={fitNote?.text} data-testid="slide-fit">
                       <AlertTriangle className="h-3 w-3" /> Hindi kasya
@@ -1536,10 +1616,10 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                   ) : previewFit && previewFit.ratio < 0.98 && styleFor(currentScheduleItem).scale * previewScale > 1 ? (
                     // only when a bigger size was asked for and auto-fit holds it back (normal auto-fit = no badge)
                     <span className="badge" title={fitNote?.text} data-testid="slide-fit">
-                      fit {Math.round(previewFit.ratio * 100)}%
+                      <span className="hidden sm:inline">fit </span>{Math.round(previewFit.ratio * 100)}%
                     </span>
                   ) : null}
-                  <span className="text-xs text-fg-subtle" title={currentScheduleItem.songId ? "Laki ng text ng slide na ito — naka-save sa kanta (My Songs)" : "Laki ng text ng slide na ito — para sa schedule item na ito"}>
+                  <span className="hidden text-xs text-fg-subtle sm:inline" title={currentScheduleItem.songId ? "Laki ng text ng slide na ito — naka-save sa kanta (My Songs)" : "Laki ng text ng slide na ito — para sa schedule item na ito"}>
                     Slide {previewIdx + 1}
                   </span>
                   <button
@@ -1567,6 +1647,15 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     title="Lakihan (slide na ito lang)"
                   >
                     <Plus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => openSlideEdit(currentScheduleItem, previewIdx)}
+                    className="btn btn-ghost btn-icon h-7 w-7 touch-44 lg:min-h-0 lg:min-w-0"
+                    aria-label="I-edit ang slide na ito"
+                    title="I-edit ang slide (F2)"
+                    data-testid="slide-edit-open"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
               )}
@@ -1596,11 +1685,28 @@ export const WorkflowCanvasSimulator: React.FC<WorkflowCanvasSimulatorProps> = (
                     className="group cursor-pointer select-none touch-manipulation"
                   >
                     <div
-                      className={`overflow-hidden rounded-md ring-offset-2 ring-offset-surface transition-shadow ${
+                      className={`relative overflow-hidden rounded-md ring-offset-2 ring-offset-surface transition-shadow ${
                         isSlideLive ? "ring-2 ring-live" : isSlideSelected ? "ring-2 ring-accent" : "ring-1 ring-line group-hover:ring-line-strong"
                       }`}
                     >
                       <SlideScreen slide={slide} background={currentScheduleItem.background} textScale={BASE_TEXT_SCALE} textStyle={styleFor(currentScheduleItem)} bgSettings={currentScheduleItem.bgSettings} ariaHidden />
+                      {/* 2026-11-25: edit this slide (shows on hover / focus; always on touch screens) */}
+                      {!!slide.text && !slide.image && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedSlideIndex(sIdx);
+                            openSlideEdit(currentScheduleItem, sIdx);
+                          }}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded-md bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                          aria-label={`I-edit ang slide ${sIdx + 1}`}
+                          title="I-edit ang slide (F2)"
+                          data-testid="thumb-edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                       <span className="font-mono text-xs tabular-nums text-fg-subtle">{sIdx + 1}</span>
